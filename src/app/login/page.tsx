@@ -15,8 +15,24 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isResendingVerification, setIsResendingVerification] = useState(false);
   const verified = searchParams.get("verified");
+  const verification = searchParams.get("verification");
+  const reset = searchParams.get("reset");
+  const emailHint = searchParams.get("email");
 
   useEffect(() => {
+    if (emailHint?.trim()) {
+      setEmail(emailHint.trim().toLowerCase());
+    }
+  }, [emailHint]);
+
+  useEffect(() => {
+    if (verification === "sent") {
+      showToast.success(
+        "Dogrulama e-postasi gonderildi",
+        "Gelen kutunuzu kontrol edin. Linki bulamazsaniz spam klasorune bakin."
+      );
+    }
+
     if (verified === "1") {
       showToast.success("E-posta dogrulandi", "Hesabiniza simdi giris yapabilirsiniz");
       return;
@@ -25,7 +41,11 @@ export default function LoginPage() {
     if (verified === "0") {
       showToast.error("Dogrulama gecersiz", "Link gecersiz olabilir. Yeni baglanti isteyebilirsiniz");
     }
-  }, [verified]);
+
+    if (reset === "1") {
+      showToast.success("Sifre guncellendi", "Yeni sifrenizle giris yapabilirsiniz");
+    }
+  }, [verification, verified, reset]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -168,7 +188,7 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={() => void handleResendVerification()}
-            disabled={isResendingVerification}
+            disabled={isResendingVerification || !email.trim()}
             className="mt-3 text-sm text-orange-500 hover:text-orange-400 disabled:opacity-60"
           >
             {isResendingVerification

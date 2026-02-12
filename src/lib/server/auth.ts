@@ -12,6 +12,7 @@ const ACCESS_TTL_SECONDS = 60 * 60 * 12;
 const REFRESH_TTL_SECONDS = 60 * 60 * 24 * 30;
 const EMAIL_VERIFICATION_TTL_SECONDS = 60 * 60 * 24;
 const PASSWORD_RESET_TTL_SECONDS = 60 * 30;
+const DUMMY_PASSWORD_HASH = "$2b$10$8tRjSpm4ha6tMF5T6QYw5e2LkYVfCENRzNrW2N7DbStO2Qe6hw2lG";
 
 type UserRow = {
   id: string;
@@ -28,20 +29,6 @@ type AuthSessionRow = {
   refresh_token_hash: string;
   expires_at: string;
   revoked_at: string | null;
-};
-
-type PasswordResetTokenRow = {
-  id: string;
-  user_id: string;
-  expires_at: string;
-  used_at: string | null;
-};
-
-type EmailVerificationTokenRow = {
-  id: string;
-  user_id: string;
-  expires_at: string;
-  used_at: string | null;
 };
 
 export type AuthUser = {
@@ -128,6 +115,35 @@ function getEmailVerificationSecret(): string {
   }
 
   return secret;
+}
+
+function getCookieSameSite(): "lax" | "strict" | "none" {
+  const configured = process.env.AUTH_COOKIE_SAME_SITE?.trim().toLowerCase();
+  if (configured === "strict" || configured === "none" || configured === "lax") {
+    return configured;
+  }
+
+  return "lax";
+}
+
+function getCookieSecurityOptions(): {
+  httpOnly: true;
+  secure: boolean;
+  sameSite: "lax" | "strict" | "none";
+  path: "/";
+} {
+  const sameSite = getCookieSameSite();
+  const secure =
+    process.env.AUTH_COOKIE_SECURE === "true" ||
+    process.env.NODE_ENV === "production" ||
+    sameSite === "none";
+
+  return {
+    httpOnly: true,
+    secure,
+    sameSite,
+    path: "/",
+  };
 }
 
 function pickSafeUser(user: UserRow): AuthUser {
@@ -257,10 +273,7 @@ export function attachSessionCookie(response: NextResponse, token: string): void
   response.cookies.set({
     name: SESSION_COOKIE,
     value: token,
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
+    ...getCookieSecurityOptions(),
     maxAge: ACCESS_TTL_SECONDS,
   });
 }
@@ -269,10 +282,7 @@ export function attachRefreshCookie(response: NextResponse, cookieValue: string)
   response.cookies.set({
     name: REFRESH_COOKIE,
     value: cookieValue,
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
+    ...getCookieSecurityOptions(),
     maxAge: REFRESH_TTL_SECONDS,
   });
 }
@@ -292,10 +302,7 @@ export function clearSessionCookie(response: NextResponse): void {
   response.cookies.set({
     name: SESSION_COOKIE,
     value: "",
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
+    ...getCookieSecurityOptions(),
     maxAge: 0,
   });
 }
@@ -304,10 +311,7 @@ export function clearRefreshCookie(response: NextResponse): void {
   response.cookies.set({
     name: REFRESH_COOKIE,
     value: "",
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
+    ...getCookieSecurityOptions(),
     maxAge: 0,
   });
 }
@@ -325,6 +329,7 @@ export async function authenticate(email: string, password: string): Promise<Aut
     .get(email) as UserRow | undefined;
 
   if (!user) {
+    await compare(password, DUMMY_PASSWORD_HASH);
     return null;
   }
 
@@ -782,46 +787,50 @@ export async function issueEmailVerificationTokenForEmail(
 
 export async function verifyEmailWithToken(token: string): Promise<AuthUser> {
   const tokenHash = hashEmailVerificationToken(token);
-  const verificationToken = await db
-    .prepare(
-      `
-        SELECT id, user_id, expires_at, used_at
-        FROM email_verification_tokens
-        WHERE token_hash = ?
-      `
-    )
-    .get(tokenHash) as EmailVerificationTokenRow | undefined;
-
-  if (!verificationToken || verificationToken.used_at) {
-    throw new HttpError(400, "Invalid or expired email verification token");
-  }
-
-  if (new Date(verificationToken.expires_at).getTime() <= Date.now()) {
-    throw new HttpError(400, "Invalid or expired email verification token");
-  }
-
-  const user = await db
-    .prepare("SELECT id, name, email, role, password_hash, email_verified_at FROM users WHERE id = ?")
-    .get(verificationToken.user_id) as UserRow | undefined;
-
-  if (!user) {
-    throw new HttpError(400, "Invalid email verification token");
-  }
-
   const now = nowIso();
-  await db.transaction(async () => {
+
+  return db.transaction(async () => {
+    const consumed = await db
+      .prepare(
+        `
+          UPDATE email_verification_tokens
+          SET used_at = @used_at
+          WHERE token_hash = @token_hash
+            AND used_at IS NULL
+            AND expires_at > @used_at
+          RETURNING id, user_id
+        `
+      )
+      .get({
+        used_at: now,
+        token_hash: tokenHash,
+      }) as { id: string; user_id: string } | undefined;
+
+    if (!consumed) {
+      throw new HttpError(400, "Invalid or expired email verification token");
+    }
+
+    const user = await db
+      .prepare("SELECT id, name, email, role, password_hash, email_verified_at FROM users WHERE id = ?")
+      .get(consumed.user_id) as UserRow | undefined;
+
+    if (!user) {
+      throw new HttpError(400, "Invalid email verification token");
+    }
+
     await db.prepare("UPDATE users SET email_verified_at = COALESCE(email_verified_at, ?), updated_at = ? WHERE id = ?").run(
       now,
       now,
-      verificationToken.user_id
+      consumed.user_id
     );
-    await db.prepare("UPDATE email_verification_tokens SET used_at = ? WHERE id = ?").run(
-      now,
-      verificationToken.id
-    );
-  });
 
-  return pickSafeUser(user);
+    await db.prepare("DELETE FROM email_verification_tokens WHERE user_id = ? AND id <> ?").run(
+      consumed.user_id,
+      consumed.id
+    );
+
+    return pickSafeUser(user);
+  });
 }
 
 export async function issuePasswordResetToken(
@@ -883,45 +892,47 @@ export async function issuePasswordResetToken(
 
 export async function resetPasswordWithToken(token: string, nextPassword: string): Promise<void> {
   const tokenHash = hashPasswordResetToken(token);
-  const resetToken = await db
-    .prepare(
-      `
-        SELECT id, user_id, expires_at, used_at
-        FROM password_reset_tokens
-        WHERE token_hash = ?
-      `
-    )
-    .get(tokenHash) as PasswordResetTokenRow | undefined;
-
-  if (!resetToken || resetToken.used_at) {
-    throw new HttpError(400, "Invalid or expired password reset token");
-  }
-
-  if (new Date(resetToken.expires_at).getTime() <= Date.now()) {
-    throw new HttpError(400, "Invalid or expired password reset token");
-  }
-
-  const user = await db
-    .prepare("SELECT id FROM users WHERE id = ?")
-    .get(resetToken.user_id) as { id: string } | undefined;
-
-  if (!user) {
-    throw new HttpError(400, "Invalid password reset token");
-  }
-
-  const passwordHash = await hash(nextPassword, 10);
   const now = nowIso();
+  const passwordHash = await hash(nextPassword, 10);
 
   await db.transaction(async () => {
+    const consumed = await db
+      .prepare(
+        `
+          UPDATE password_reset_tokens
+          SET used_at = @used_at
+          WHERE token_hash = @token_hash
+            AND used_at IS NULL
+            AND expires_at > @used_at
+          RETURNING id, user_id
+        `
+      )
+      .get({
+        used_at: now,
+        token_hash: tokenHash,
+      }) as { id: string; user_id: string } | undefined;
+
+    if (!consumed) {
+      throw new HttpError(400, "Invalid or expired password reset token");
+    }
+
+    const user = await db
+      .prepare("SELECT id FROM users WHERE id = ?")
+      .get(consumed.user_id) as { id: string } | undefined;
+
+    if (!user) {
+      throw new HttpError(400, "Invalid password reset token");
+    }
+
     await db.prepare("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?").run(
       passwordHash,
       now,
-      resetToken.user_id
+      consumed.user_id
     );
 
-    await db.prepare("UPDATE password_reset_tokens SET used_at = ? WHERE id = ?").run(
-      now,
-      resetToken.id
+    await db.prepare("DELETE FROM password_reset_tokens WHERE user_id = ? AND id <> ?").run(
+      consumed.user_id,
+      consumed.id
     );
 
     await db.prepare(
@@ -930,7 +941,7 @@ export async function resetPasswordWithToken(token: string, nextPassword: string
         SET revoked_at = ?, updated_at = ?
         WHERE user_id = ? AND revoked_at IS NULL
       `
-    ).run(now, now, resetToken.user_id);
+    ).run(now, now, consumed.user_id);
   });
 }
 

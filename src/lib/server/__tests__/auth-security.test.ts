@@ -114,6 +114,27 @@ describeWithDatabase("auth token security", () => {
     );
   });
 
+  it("allows only one concurrent email verification token consumption", async () => {
+    const user = await createTestUser();
+    const issued = await issueEmailVerificationTokenForUserId(user.id, buildRequest("127.0.0.21"));
+
+    expect(issued).not.toBeNull();
+
+    const results = await Promise.allSettled([
+      verifyEmailWithToken(issued?.token ?? ""),
+      verifyEmailWithToken(issued?.token ?? ""),
+    ]);
+
+    const fulfilled = results.filter((result) => result.status === "fulfilled");
+    const rejected = results.filter((result) => result.status === "rejected");
+
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(String((rejected[0] as PromiseRejectedResult).reason)).toContain(
+      "Invalid or expired email verification token"
+    );
+  });
+
   it("enforces password reset token single-use", async () => {
     const user = await createTestUser();
     const issued = await issuePasswordResetToken(user.email, buildRequest("127.0.0.3"));
@@ -138,6 +159,27 @@ describeWithDatabase("auth token security", () => {
     );
 
     await expect(resetPasswordWithToken(issued?.token ?? "", "FreshPassword123!")).rejects.toThrow(
+      "Invalid or expired password reset token"
+    );
+  });
+
+  it("allows only one concurrent password reset token consumption", async () => {
+    const user = await createTestUser();
+    const issued = await issuePasswordResetToken(user.email, buildRequest("127.0.0.22"));
+
+    expect(issued).not.toBeNull();
+
+    const results = await Promise.allSettled([
+      resetPasswordWithToken(issued?.token ?? "", "ConcurrentPassword123!"),
+      resetPasswordWithToken(issued?.token ?? "", "ConcurrentPassword456!"),
+    ]);
+
+    const fulfilled = results.filter((result) => result.status === "fulfilled");
+    const rejected = results.filter((result) => result.status === "rejected");
+
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(String((rejected[0] as PromiseRejectedResult).reason)).toContain(
       "Invalid or expired password reset token"
     );
   });

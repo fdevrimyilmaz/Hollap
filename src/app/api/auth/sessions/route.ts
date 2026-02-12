@@ -9,7 +9,7 @@ import {
   revokeUserSession,
 } from "@/lib/server/auth";
 import { writeAuditLog } from "@/lib/server/audit";
-import { assertCsrf } from "@/lib/server/security";
+import { assertCsrf, consumeRateLimit, getClientIp } from "@/lib/server/security";
 import { parseJsonBody } from "@/lib/server/validation";
 
 const revokeSessionSchema = z.object({
@@ -20,6 +20,25 @@ const revokeSessionSchema = z.object({
 
 export async function GET(request: Request) {
   try {
+    const limiter = await consumeRateLimit({
+      key: `auth:sessions:get:ip:${getClientIp(request)}`,
+      maxAttempts: 120,
+      windowMs: 15 * 60 * 1000,
+      blockDurationMs: 10 * 60 * 1000,
+    });
+
+    if (!limiter.allowed) {
+      return NextResponse.json(
+        { error: "Too many session requests. Please try again later." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(limiter.retryAfterSeconds),
+          },
+        }
+      );
+    }
+
     const authState = await requireAuthSession(request);
 
     const sessions = await listUserSessions({
@@ -39,6 +58,25 @@ export async function GET(request: Request) {
 export async function DELETE(request: Request) {
   try {
     assertCsrf(request);
+    const limiter = await consumeRateLimit({
+      key: `auth:sessions:delete:ip:${getClientIp(request)}`,
+      maxAttempts: 60,
+      windowMs: 15 * 60 * 1000,
+      blockDurationMs: 15 * 60 * 1000,
+    });
+
+    if (!limiter.allowed) {
+      return NextResponse.json(
+        { error: "Too many revoke attempts. Please try again later." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(limiter.retryAfterSeconds),
+          },
+        }
+      );
+    }
+
     const authState = await requireAuthSession(request);
     const contentLength = Number(request.headers.get("content-length") ?? "0");
     const body =

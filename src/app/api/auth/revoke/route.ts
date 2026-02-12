@@ -8,7 +8,7 @@ import {
   revokeSessionsForUser,
 } from "@/lib/server/auth";
 import { writeAuditLog } from "@/lib/server/audit";
-import { assertCsrf } from "@/lib/server/security";
+import { assertCsrf, consumeRateLimit, getClientIp } from "@/lib/server/security";
 import { parseJsonBody } from "@/lib/server/validation";
 
 const revokeSchema = z.object({
@@ -18,6 +18,24 @@ const revokeSchema = z.object({
 export async function POST(request: Request) {
   try {
     assertCsrf(request);
+    const limiter = await consumeRateLimit({
+      key: `auth:revoke:ip:${getClientIp(request)}`,
+      maxAttempts: 60,
+      windowMs: 15 * 60 * 1000,
+      blockDurationMs: 15 * 60 * 1000,
+    });
+
+    if (!limiter.allowed) {
+      return NextResponse.json(
+        { error: "Too many revoke attempts. Please try again later." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(limiter.retryAfterSeconds),
+          },
+        }
+      );
+    }
 
     const authState = await requireAuthSession(request);
     const contentLength = Number(request.headers.get("content-length") ?? "0");

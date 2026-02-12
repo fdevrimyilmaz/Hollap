@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { showToast } from "@/components/ToastProvider";
 
 export default function ForgotPasswordPage() {
+  const router = useRouter();
   const [token, setToken] = useState("");
   const resetMode = useMemo(() => token.length > 0, [token]);
 
@@ -85,6 +87,8 @@ export default function ForgotPasswordPage() {
       showToast.success("Sifre guncellendi", "Yeni sifrenizle giris yapabilirsiniz");
       setPassword("");
       setConfirmPassword("");
+      router.push("/login?reset=1");
+      router.refresh();
     } catch (error) {
       showToast.error(
         "Sifre guncellenemedi",

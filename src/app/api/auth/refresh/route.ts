@@ -1,11 +1,29 @@
 import { NextResponse } from "next/server";
 import { attachAuthCookies, authErrorResponse, rotateSession } from "@/lib/server/auth";
 import { writeAuditLog } from "@/lib/server/audit";
-import { assertCsrf } from "@/lib/server/security";
+import { assertCsrf, consumeRateLimit, getClientIp } from "@/lib/server/security";
 
 export async function POST(request: Request) {
   try {
     assertCsrf(request);
+    const limiter = await consumeRateLimit({
+      key: `auth:refresh:ip:${getClientIp(request)}`,
+      maxAttempts: 60,
+      windowMs: 15 * 60 * 1000,
+      blockDurationMs: 15 * 60 * 1000,
+    });
+
+    if (!limiter.allowed) {
+      return NextResponse.json(
+        { error: "Too many refresh attempts. Please try again later." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(limiter.retryAfterSeconds),
+          },
+        }
+      );
+    }
 
     const rotated = await rotateSession(request);
 

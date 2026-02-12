@@ -20,6 +20,7 @@ export default function SignupPage() {
     setIsLoading(true);
 
     try {
+      const normalizedEmail = email.trim().toLowerCase();
       const response = await fetch("/api/auth/signup", {
         method: "POST",
         headers: {
@@ -27,7 +28,7 @@ export default function SignupPage() {
         },
         body: JSON.stringify({
           name,
-          email,
+          email: normalizedEmail,
           password,
           role: isCreator ? "creator" : "subscriber",
         }),
@@ -43,7 +44,7 @@ export default function SignupPage() {
         "Kayit tamamlandi",
         payload.message ?? "Hesabi aktif etmek icin e-postaniza gelen linki kullanin"
       );
-      router.push("/login");
+      router.push(`/login?verification=sent&email=${encodeURIComponent(normalizedEmail)}`);
       router.refresh();
     } catch (error) {
       showToast.error(
@@ -189,6 +190,9 @@ export default function SignupPage() {
                 isCreator ? "Yaratici Olarak Kayit Ol" : "Kayit Ol"
               )}
             </Button>
+            <p className="text-xs text-muted-foreground">
+              Kayit sonrasi hesabinizi etkinlestirmek icin e-posta dogrulamasi gerekir.
+            </p>
           </form>
 
           <div className="relative my-6">
