@@ -1,6 +1,10 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { db, createId, nowIso } from "@/lib/server/db";
 import { HttpError } from "@/lib/server/auth";
+import {
+  getClientIp as resolveClientIp,
+  getUserAgent as resolveUserAgent,
+} from "@/lib/server/request-context";
 
 const IDEMPOTENCY_HEADER = "x-idempotency-key";
 
@@ -19,18 +23,8 @@ type IdempotencyRow = {
   expires_at: string;
 };
 
-export function getClientIp(request: Request): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    return forwarded.split(",")[0]?.trim() || "unknown";
-  }
-
-  return request.headers.get("x-real-ip")?.trim() || "unknown";
-}
-
-export function getUserAgent(request: Request): string {
-  return request.headers.get("user-agent")?.slice(0, 255) || "unknown";
-}
+export const getClientIp = resolveClientIp;
+export const getUserAgent = resolveUserAgent;
 
 function safeCompare(a: string, b: string): boolean {
   const aBuffer = Buffer.from(a);

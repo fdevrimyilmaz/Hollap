@@ -3,13 +3,21 @@ import { compare, hash } from "bcryptjs";
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { writeAuditLog } from "@/lib/server/audit";
 import { createId, db, nowIso } from "@/lib/server/db";
+import { logWarn } from "@/lib/server/logger";
+import { getClientIp, getUserAgent } from "@/lib/server/request-context";
 import type { UserRole } from "@/lib/server/types";
 
 const SESSION_COOKIE = "creatorhub_session";
 const REFRESH_COOKIE = "creatorhub_refresh";
 const ACCESS_TTL_SECONDS = 60 * 60 * 12;
 const REFRESH_TTL_SECONDS = 60 * 60 * 24 * 30;
+// Grace window during which the previously-rotated refresh token is still
+// remembered for replay-detection purposes. Long enough to absorb a legitimate
+// browser tab race; short enough that an attacker who sees the old token after
+// the user has refreshed can still be caught and the session revoked.
+const REFRESH_PREVIOUS_GRACE_SECONDS = 60;
 const EMAIL_VERIFICATION_TTL_SECONDS = 60 * 60 * 24;
 const PASSWORD_RESET_TTL_SECONDS = 60 * 30;
 const DUMMY_PASSWORD_HASH = "$2b$10$8tRjSpm4ha6tMF5T6QYw5e2LkYVfCENRzNrW2N7DbStO2Qe6hw2lG";
@@ -27,6 +35,8 @@ type AuthSessionRow = {
   id: string;
   user_id: string;
   refresh_token_hash: string;
+  previous_refresh_token_hash: string | null;
+  previous_refresh_token_expires_at: string | null;
   expires_at: string;
   revoked_at: string | null;
 };
@@ -126,7 +136,7 @@ function getCookieSameSite(): "lax" | "strict" | "none" {
   return "lax";
 }
 
-function getCookieSecurityOptions(): {
+export function getCookieSecurityOptions(): {
   httpOnly: true;
   secure: boolean;
   sameSite: "lax" | "strict" | "none";
@@ -172,18 +182,7 @@ function parseCookieValue(request: Request | NextRequest, key: string): string |
   return null;
 }
 
-function getRequestIp(request: Request | NextRequest): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    return forwarded.split(",")[0]?.trim() || "unknown";
-  }
-
-  return request.headers.get("x-real-ip")?.trim() || "unknown";
-}
-
-function getUserAgent(request: Request | NextRequest): string {
-  return request.headers.get("user-agent")?.slice(0, 255) || "unknown";
-}
+const getRequestIp = getClientIp;
 
 function hashToken(secret: string, token: string): string {
   return createHash("sha256")
@@ -456,7 +455,8 @@ export async function rotateSession(
   const session = await db
     .prepare(
       `
-        SELECT id, user_id, refresh_token_hash, expires_at, revoked_at
+        SELECT id, user_id, refresh_token_hash, previous_refresh_token_hash,
+               previous_refresh_token_expires_at, expires_at, revoked_at
         FROM auth_sessions
         WHERE id = ?
       `
@@ -472,6 +472,48 @@ export async function rotateSession(
   }
 
   const currentHash = hashRefreshToken(parsed.token);
+
+  // Replay detection: presenting the *previous* rotated token (within the
+  // grace window) is treated as a stolen-token signal. Revoke the entire
+  // session immediately and surface a security event.
+  if (
+    session.previous_refresh_token_hash &&
+    session.previous_refresh_token_expires_at &&
+    new Date(session.previous_refresh_token_expires_at).getTime() > Date.now() &&
+    safeEqual(currentHash, session.previous_refresh_token_hash)
+  ) {
+    const now = nowIso();
+    await db
+      .prepare(
+        `
+          UPDATE auth_sessions
+          SET revoked_at = ?, updated_at = ?
+          WHERE id = ? AND revoked_at IS NULL
+        `
+      )
+      .run(now, now, session.id);
+
+    logWarn("auth.refresh_token_replay_detected", {
+      userId: session.user_id,
+      sessionId: session.id,
+      ip: getClientIp(request),
+      userAgent: getUserAgent(request),
+    });
+
+    await writeAuditLog({
+      actorUserId: session.user_id,
+      action: "auth.refresh_token_replay_detected",
+      entityType: "auth_session",
+      entityId: session.id,
+      metadata: {
+        ip: getClientIp(request),
+        userAgent: getUserAgent(request),
+      },
+    });
+
+    throw new HttpError(401, "Session revoked due to token reuse");
+  }
+
   if (!safeEqual(currentHash, session.refresh_token_hash)) {
     throw new HttpError(401, "Invalid refresh token");
   }
@@ -486,11 +528,16 @@ export async function rotateSession(
 
   const newRawRefreshToken = createRawToken();
   const now = nowIso();
+  const previousExpiresAt = new Date(
+    Date.now() + REFRESH_PREVIOUS_GRACE_SECONDS * 1000
+  ).toISOString();
 
   await db.prepare(
     `
       UPDATE auth_sessions
       SET refresh_token_hash = ?,
+          previous_refresh_token_hash = ?,
+          previous_refresh_token_expires_at = ?,
           updated_at = ?,
           last_seen_at = ?,
           expires_at = ?
@@ -498,6 +545,8 @@ export async function rotateSession(
     `
   ).run(
     hashRefreshToken(newRawRefreshToken),
+    session.refresh_token_hash,
+    previousExpiresAt,
     now,
     now,
     new Date(Date.now() + REFRESH_TTL_SECONDS * 1000).toISOString(),

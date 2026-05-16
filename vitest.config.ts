@@ -11,6 +11,8 @@ export default defineConfig({
     environment: "node",
     fileParallelism: false,
     globals: true,
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    exclude: ["node_modules", ".next", "hollap-core", "dist", "build"],
   },
 });
 

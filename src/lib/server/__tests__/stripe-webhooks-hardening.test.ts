@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { STRIPE_API_VERSION } from "@/lib/server/payments";
 
 type WebhookEventRow = {
   id: string;
@@ -340,7 +341,7 @@ let StripeWebhookSignatureError: (typeof import("@/lib/server/payments"))["Strip
 
 function signWebhookPayload(payload: string): string {
   const stripe = new Stripe("sk_test_unit", {
-    apiVersion: "2026-01-28.clover",
+    apiVersion: STRIPE_API_VERSION,
   });
 
   return stripe.webhooks.generateTestHeaderString({
