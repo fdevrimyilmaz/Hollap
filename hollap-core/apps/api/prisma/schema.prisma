@@ -1,0 +1,170 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  TEACHER
+  STUDENT
+  ASSISTANT
+}
+
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  CANCELED
+  EXPIRED
+}
+
+enum RoomState {
+  ACTIVE
+  ENDED
+}
+
+enum RoomRole {
+  TEACHER
+  MODERATOR
+  SPEAKER
+  LISTENER
+}
+
+enum MicRequestStatus {
+  PENDING
+  APPROVED
+  REVOKED
+}
+
+model User {
+  id                   String         @id @default(cuid())
+  email                String         @unique
+  passwordHash         String?
+  name                 String
+  role                 UserRole       @default(STUDENT)
+  avatarUrl            String?
+  stripeCustomerId     String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  teacher              Teacher?
+  studentSubscriptions Subscription[] @relation("studentSubscriptions")
+  teacherSubscriptions Subscription[] @relation("teacherSubscriptions")
+  stageRooms           StageRoom[]    @relation("teacherRooms")
+  stageParticipants    StageParticipant[]
+  stageMicRequests     StageMicRequest[]
+  stageNotes           StageNote[]    @relation("authorNotes")
+  wallQuestions        WallQuestion[]
+  wallVoiceReplies     WallVoiceReply[]
+  refreshTokens        RefreshToken[]
+}
+
+model Teacher {
+  userId                String   @id
+  bio                   String
+  category              String
+  priceMonthly          Int
+  assistantIds          String[]
+  stripeAccountId       String?  @unique
+  stripeChargesEnabled  Boolean  @default(false)
+  stripePayoutsEnabled  Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id            String             @id @default(cuid())
+  studentUserId String
+  teacherUserId String
+  status        SubscriptionStatus @default(PENDING)
+  stripeSessionId String?
+  startDate     DateTime?
+  endDate       DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  student       User               @relation("studentSubscriptions", fields: [studentUserId], references: [id], onDelete: Cascade)
+  teacher       User               @relation("teacherSubscriptions", fields: [teacherUserId], references: [id], onDelete: Cascade)
+
+  @@unique([studentUserId, teacherUserId])
+}
+
+model StageRoom {
+  id            String             @id @default(cuid())
+  teacherUserId String
+  title         String
+  description   String?
+  state         RoomState          @default(ACTIVE)
+  createdAt     DateTime           @default(now())
+  endedAt       DateTime?
+  teacher       User               @relation("teacherRooms", fields: [teacherUserId], references: [id], onDelete: Cascade)
+  participants  StageParticipant[]
+  micRequests   StageMicRequest[]
+  notes         StageNote[]
+}
+
+model StageParticipant {
+  id        String   @id @default(cuid())
+  roomId    String
+  userId    String
+  role      RoomRole @default(LISTENER)
+  joinedAt  DateTime @default(now())
+  leftAt    DateTime?
+  room      StageRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+}
+
+model StageMicRequest {
+  id         String           @id @default(cuid())
+  roomId     String
+  userId     String
+  status     MicRequestStatus @default(PENDING)
+  createdAt  DateTime         @default(now())
+  resolvedAt DateTime?
+  room       StageRoom        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model StageNote {
+  id           String   @id @default(cuid())
+  roomId        String
+  authorUserId  String
+  content       String
+  createdAt     DateTime @default(now())
+  room          StageRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  author        User      @relation("authorNotes", fields: [authorUserId], references: [id], onDelete: Cascade)
+}
+
+model WallQuestion {
+  id           String   @id @default(cuid())
+  teacherUserId String
+  questionText String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  teacher      User     @relation(fields: [teacherUserId], references: [id], onDelete: Cascade)
+  replies      WallVoiceReply[]
+}
+
+model WallVoiceReply {
+  id            String   @id @default(cuid())
+  questionId    String
+  studentUserId String
+  audioUrl      String
+  durationSec   Int
+  createdAt     DateTime @default(now())
+  question      WallQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  student       User         @relation(fields: [studentUserId], references: [id], onDelete: Cascade)
+}
+
+model RefreshToken {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

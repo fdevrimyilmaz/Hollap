@@ -1,0 +1,24 @@
+{
+  "name": "hollap-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hollap Core MVP monorepo",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace @hollap/api\" \"npm run dev --workspace @hollap/web\"",
+    "build": "npm run build --workspace @hollap/api && npm run build --workspace @hollap/web",
+    "test": "npm run test --workspace @hollap/api",
+    "prisma:generate": "npm run prisma:generate --workspace @hollap/api",
+    "prisma:migrate": "npm run prisma:migrate --workspace @hollap/api",
+    "prisma:seed": "npm run prisma:seed --workspace @hollap/api",
+    "infra:up": "docker compose up -d postgres redis minio",
+    "infra:down": "docker compose down",
+    "demo:setup": "npm run prisma:generate && npm run prisma:migrate && npm run prisma:seed",
+    "smoke:api": "powershell -ExecutionPolicy Bypass -File ./scripts/smoke-api.ps1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
