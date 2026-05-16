@@ -1,11 +1,16 @@
 # CreatorHub
 
-Next.js application with a backend for creator workflows (PostgreSQL, auth, payments, notifications, and delivery retries).
+Next.js 15 application with a hardened backend for creator workflows
+(PostgreSQL, auth with refresh-token replay detection, payments, notifications,
+and delivery retries).
+
+> **Going to production?** Follow [DEPLOYMENT.md](DEPLOYMENT.md) end-to-end.
 
 ## Requirements
 
 - Node.js 20+
 - npm 10+
+- Docker (optional, for local Postgres)
 
 ## Environment Setup
 
@@ -20,6 +25,7 @@ Minimum required for local backend flow:
 - `APP_JWT_SECRET`
 - `REFRESH_TOKEN_SECRET`
 - `PASSWORD_RESET_TOKEN_SECRET`
+- `EMAIL_VERIFICATION_TOKEN_SECRET`
 - `FILE_TOKEN_SECRET`
 - `OBJECT_STORAGE_DRIVER` (`local` or `s3`)
 
@@ -32,8 +38,19 @@ npm run env:secrets
 Validate env values before deploy:
 
 ```bash
+# Local file mode
 npm run env:check -- --file .env.local --mode production
+
+# Deploy mode (reads process.env, autodetects Netlify CONTEXT / Vercel
+# VERCEL_ENV). Wired into netlify.toml build, so a deploy with missing or
+# placeholder secrets fails build before publishing.
+npm run env:check:deploy
 ```
+
+A second-line defense runs at runtime: [src/instrumentation.ts](src/instrumentation.ts)
+throws fatally on cold start in production if cookie security is off, URLs
+point at localhost, or any required secret is missing. Functions never serve
+traffic with a broken environment.
 
 Deploy-only alternative (if you do not set `DATABASE_URL` globally):
 - `DATABASE_URL_PREVIEW`
@@ -45,11 +62,15 @@ For real Stripe payments/webhooks:
 
 ## Local Postgres (Recommended)
 
-Start local PostgreSQL with Docker Compose:
+Convenience npm scripts wrap docker-compose:
 
 ```bash
-docker compose up -d
+npm run db:up      # start postgres in background
+npm run db:down    # stop containers
+npm run db:reset   # wipe volume and recreate (destructive)
 ```
+
+Or directly: `docker compose up -d`.
 
 This starts `postgres:16` on `127.0.0.1:5432` with:
 - DB: `hollap`
@@ -57,6 +78,19 @@ This starts `postgres:16` on `127.0.0.1:5432` with:
 - Password: `postgres`
 
 Default `DATABASE_URL` in `.env.example` already matches this local setup.
+
+### Database security
+
+- Production must set `DATABASE_SSL=true`. TLS certificate verification is
+  ON by default (`rejectUnauthorized=true`).
+- For strict CA pinning, provide PEM via `DATABASE_CA_CERT`.
+- `DATABASE_SSL_REJECT_UNAUTHORIZED=false` exists as a documented opt-out
+  for legacy providers; it disables MITM protection and logs a loud
+  production warning. Avoid.
+- Migration runner takes a `pg_advisory_xact_lock` to serialize concurrent
+  cold starts across serverless function instances.
+- DB pool size defaults to 2 on serverless (Netlify/Vercel/Lambda/CF
+  Workers) and 5 elsewhere. Override with `DATABASE_POOL_MAX`.
 
 ## Stripe Webhook Local Test (PR-4)
 
@@ -280,3 +314,55 @@ Orphaned upload drafts are cleaned by the internal cron endpoint:
 - Replaced local SQLite runtime with PostgreSQL (`pg` pool + SQL migrations).
 - Added automatic migration runner.
 - Added local Postgres via `docker-compose.yml` for development parity.
+
+## Security Architecture
+
+The app ships secure-by-default. Key controls:
+
+- **Authentication**: bcrypt password hashing, JWT access tokens (12h),
+  opaque refresh tokens (30d) hashed with separate HMAC secret in DB.
+- **Refresh token replay detection**: rotating a refresh token preserves
+  the prior hash for a 60s grace window. Any request that presents the
+  prior token after rotation revokes the entire session and writes an
+  `auth.refresh_token_replay_detected` audit row. See migration
+  `0012_refresh_token_replay_detection.sql` and `rotateSession` in
+  [src/lib/server/auth.ts](src/lib/server/auth.ts).
+- **OAuth (Google + GitHub)**: PKCE (S256) on both flows, rate-limited
+  init and callback routes, state cookies share the same Secure/SameSite
+  policy as auth cookies. See
+  [src/app/api/auth/oauth/[provider]/route.ts](src/app/api/auth/oauth/%5Bprovider%5D/route.ts).
+- **Rate limiting**: per-IP + per-(IP, account) on login, signup,
+  forgot/reset password, email verification, refresh, OAuth init/callback.
+  Backed by `rate_limits` table with sliding window + block duration.
+- **CSRF**: Origin/Referer check on all state-changing routes via
+  `assertCsrf` in [src/lib/server/security.ts](src/lib/server/security.ts).
+- **Client IP trust**: prefers platform-injected single-value headers
+  (Netlify `x-nf-client-connection-ip`, Vercel, Cloudflare, Akamai) and
+  falls back to the LAST hop of `x-forwarded-for` — not the first.
+  Spoof-resistant. See
+  [src/lib/server/request-context.ts](src/lib/server/request-context.ts).
+- **CSP**: nonce-based Content-Security-Policy header set in
+  [src/middleware.ts](src/middleware.ts).
+- **Cookies**: HttpOnly + Secure in production + configurable SameSite.
+- **Webhook idempotency**: Stripe events deduplicated by event ID with
+  status tracking; replay-safe.
+- **Boot-time validation**: production cold start refuses to serve
+  traffic if any required secret is missing or insecure config is
+  detected. See [src/instrumentation.ts](src/instrumentation.ts).
+
+## Smoke Test (post-deploy)
+
+```bash
+APP_BASE_URL=https://your-domain npm run smoke
+```
+
+Probes: health (db + integrations), security headers, CSRF guard,
+signup happy path. Exits non-zero on failure. See
+[scripts/smoke.mjs](scripts/smoke.mjs).
+
+## CI
+
+GitHub Actions workflow at `.github/workflows/ci.yml` runs on every PR
+to `main` / `auth-prod`. Spins up Postgres 16 as a service, applies
+migrations, then runs lint + typecheck + tests + build. Concurrency
+guard cancels in-flight runs when a new commit lands on the same branch.
