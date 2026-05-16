@@ -49,7 +49,6 @@ export async function sendPasswordResetEmail(params: {
   } catch (error) {
     logWarn("auth.password_reset_email_fallback", {
       email: params.to,
-      resetUrl: params.resetUrl,
       reason: error instanceof Error ? error.message : "unknown",
     });
   }
@@ -74,7 +73,6 @@ export async function sendEmailVerificationEmail(params: {
   } catch (error) {
     logWarn("auth.email_verification_email_fallback", {
       email: params.to,
-      verificationUrl: params.verificationUrl,
       reason: error instanceof Error ? error.message : "unknown",
     });
   }

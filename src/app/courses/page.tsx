@@ -1,12 +1,28 @@
-﻿import Link from "next/link";
-import { Header } from "@/components/layout/Header";
+import Link from "next/link";
 import Image from "next/image";
+import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { courses, formatNumber } from "@/lib/data";
+import { listCatalogProducts } from "@/lib/server/catalog";
 
-export default function CoursesPage() {
+export const dynamic = "force-dynamic";
+
+function formatNumber(value: number): string {
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)}M`;
+  }
+
+  if (value >= 1_000) {
+    return `${(value / 1_000).toFixed(1)}K`;
+  }
+
+  return String(value);
+}
+
+export default async function CoursesPage() {
+  const courses = await listCatalogProducts();
+
   return (
     <main className="min-h-screen relative">
       <Header />
@@ -34,7 +50,7 @@ export default function CoursesPage() {
                   <div className="relative aspect-video overflow-hidden">
                     <Image
                       src={course.thumbnail}
-                      alt={course.title}
+                      alt={course.name}
                       fill
                       sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -49,12 +65,12 @@ export default function CoursesPage() {
                       {course.category}
                     </Badge>
                     <h2 className="text-lg font-semibold text-white group-hover:text-orange-500 transition-colors line-clamp-2">
-                      {course.title}
+                      {course.name}
                     </h2>
                     <p className="text-sm text-muted-foreground line-clamp-2">{course.description}</p>
                     <div className="flex items-center justify-between pt-2 border-t border-white/10">
                       <span className="text-sm text-muted-foreground">{formatNumber(course.students)} ogrenci</span>
-                      <span className="text-lg font-bold gradient-text">${course.price}</span>
+                      <span className="text-lg font-bold gradient-text">${(course.amountCents / 100).toFixed(2)}</span>
                     </div>
                   </div>
                 </article>

@@ -23,6 +23,22 @@ Minimum required for local backend flow:
 - `FILE_TOKEN_SECRET`
 - `OBJECT_STORAGE_DRIVER` (`local` or `s3`)
 
+Generate secure local secrets quickly:
+
+```bash
+npm run env:secrets
+```
+
+Validate env values before deploy:
+
+```bash
+npm run env:check -- --file .env.local --mode production
+```
+
+Deploy-only alternative (if you do not set `DATABASE_URL` globally):
+- `DATABASE_URL_PREVIEW`
+- `DATABASE_URL_PRODUCTION`
+
 For real Stripe payments/webhooks:
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
@@ -58,15 +74,16 @@ stripe listen --forward-to http://localhost:3000/api/payments/webhook
 
 3. Copy the printed `whsec_...` and set it as `STRIPE_WEBHOOK_SECRET` in `.env.local`.
 
-4. Trigger subscription checkout completion (creates/updates subscription mapping):
+4. Trigger subscription checkout completion (creates/updates subscription mapping).
+Use real user IDs from your DB for `creatorId` and `subscriberId`:
 
 ```bash
 stripe trigger checkout.session.completed \
   --override checkout_session:mode=subscription \
   --override checkout_session:subscription=sub_harden_1 \
   --override checkout_session:customer=cus_harden_1 \
-  --override checkout_session:metadata.creatorId=usr_creator_demo \
-  --override checkout_session:metadata.subscriberId=usr_subscriber_demo \
+  --override checkout_session:metadata.creatorId=usr_creator_real \
+  --override checkout_session:metadata.subscriberId=usr_subscriber_real \
   --override checkout_session:metadata.tier=vip
 ```
 
@@ -118,6 +135,10 @@ Build production bundle:
 npm run build
 ```
 
+Build note:
+- `npm run build` does not require a live DB connection.
+- `DATABASE_URL` is still required at runtime for DB-backed endpoints.
+
 Start production server:
 
 ```bash
@@ -152,19 +173,35 @@ CI check (lint + typecheck + test):
 npm run ci
 ```
 
+Environment check (recommended before deploy):
+
+```bash
+npm run env:check -- --file .env.local --mode production
+```
+
 ## Database Migrations
 
-Migrations are SQL files in `src/lib/server/migrations` and run automatically on first DB access.
+Migrations are SQL files in `src/lib/server/migrations`.
+
+Available migration command:
+
+```bash
+npm run db:migrate
+```
+
+Migration strategy:
+- Explicit release step (recommended): run `npm run db:migrate` before serving traffic.
+- Runtime fallback: app also applies pending migrations automatically on first DB access.
 
 Migration flow:
-1. Ensure `DATABASE_URL` points to your Postgres instance.
-2. Start the app (`npm run dev`) or call any API endpoint.
+1. Ensure `DATABASE_URL` is set, or provide `DATABASE_URL_PREVIEW` / `DATABASE_URL_PRODUCTION` for target deploy contexts.
+2. Run `npm run db:migrate` during deploy, or start app (`npm run dev`) / call any API endpoint.
 3. The app creates `schema_migrations` and applies pending migrations in filename order.
 4. Verify DB connectivity and migration success via `GET /api/health` (`db: "ok"`).
 
-Smoke seed:
-- A minimal seed migration inserts demo-safe starter records.
-- Seed inserts are idempotent (`ON CONFLICT DO NOTHING`) and won’t duplicate data.
+Seed policy:
+- Migrations do not insert demo users or starter commerce records.
+- Create users and products through the app flow (`/signup`, dashboard product APIs) or your own seed script.
 
 Migrating from previous local SQLite:
 1. Backup old SQLite data if needed.
@@ -176,12 +213,55 @@ Migrating from previous local SQLite:
 
 This repo is configured for Next.js on Netlify with `@netlify/plugin-nextjs` in `netlify.toml`.
 
-- Build command: `npm ci && npm run build`
+- Build command: `npm ci && npm run ci && npm run build`
 - Node version: `20`
 - Plugin: `@netlify/plugin-nextjs`
 
 Set the same environment variables from `.env.local` in Netlify Site Settings before deploying.
-`DATABASE_URL` must point to a reachable Postgres instance for production build/runtime.
+
+Environment strategy:
+- Use separate `DATABASE_URL_PREVIEW` and `DATABASE_URL_PRODUCTION` values (or context-scoped `DATABASE_URL`).
+- Deploy pipeline now includes `npm run ci` (lint + typecheck + migration + tests).
+- Pipeline migration step requires DB connectivity from Netlify build environment.
+- Runtime DB-backed routes require a reachable Postgres instance.
+
+## Clean Deploy Package
+
+Do not ship local/runtime artifacts in release zips:
+- `.next/`
+- `node_modules/`
+- `.git/`
+- `.data/*.db*`
+- `.dev*.log`
+
+If you need a source-only zip, prefer:
+
+```bash
+git archive --format=zip --output release.zip HEAD
+```
+
+## Release Stabilization
+
+Use release guards before publishing:
+
+1. Commit all changes (clean working tree required).
+2. Create an annotated release tag:
+
+```bash
+npm run release:tag -- v0.1.0
+```
+
+3. Run preflight checks (must pass clean tree + tag on `HEAD`):
+
+```bash
+npm run release:preflight
+```
+
+4. Build source-only archive from the release tag:
+
+```bash
+git archive --format=zip --output release-v0.1.0.zip v0.1.0
+```
 
 ## File Upload / Download Flow (PR-5 object-storage)
 
@@ -198,10 +278,5 @@ Orphaned upload drafts are cleaned by the internal cron endpoint:
 ## Migration Notes (PR-2: db-postgres)
 
 - Replaced local SQLite runtime with PostgreSQL (`pg` pool + SQL migrations).
-- Added automatic migration runner with idempotent smoke seed.
+- Added automatic migration runner.
 - Added local Postgres via `docker-compose.yml` for development parity.
-
-## Demo Accounts
-
-- Creator: `creator@hollap.dev` / `creator123`
-- Subscriber: `student@hollap.dev` / `student123`

@@ -23,41 +23,136 @@ declare global {
   var __creatorhubDbInitPromise: Promise<void> | undefined;
 }
 
-function resolveDatabaseUrl(): string {
-  if (process.env.DATABASE_URL) {
-    return process.env.DATABASE_URL;
+function resolveDeployTarget(): "development" | "preview" | "production" {
+  const netlifyContext = process.env.CONTEXT?.trim().toLowerCase();
+  if (netlifyContext === "production") {
+    return "production";
+  }
+  if (netlifyContext === "deploy-preview" || netlifyContext === "branch-deploy") {
+    return "preview";
   }
 
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("DATABASE_URL is required in production");
+  const vercelEnv = process.env.VERCEL_ENV?.trim().toLowerCase();
+  if (vercelEnv === "production") {
+    return "production";
+  }
+  if (vercelEnv === "preview") {
+    return "preview";
+  }
+
+  return process.env.NODE_ENV === "production" ? "production" : "development";
+}
+
+function resolveDatabaseUrl(): string {
+  const defaultUrl = process.env.DATABASE_URL?.trim();
+  if (defaultUrl) {
+    return defaultUrl;
+  }
+
+  const deployTarget = resolveDeployTarget();
+
+  if (deployTarget === "production") {
+    const productionUrl = process.env.DATABASE_URL_PRODUCTION?.trim();
+    if (productionUrl) {
+      return productionUrl;
+    }
+
+    throw new Error(
+      "DATABASE_URL or DATABASE_URL_PRODUCTION is required in production. Set one in your deploy environment."
+    );
+  }
+
+  if (deployTarget === "preview") {
+    const previewUrl = process.env.DATABASE_URL_PREVIEW?.trim();
+    if (previewUrl) {
+      return previewUrl;
+    }
+
+    throw new Error(
+      "DATABASE_URL or DATABASE_URL_PREVIEW is required in preview deploys. Set one in your deploy environment."
+    );
   }
 
   return DEFAULT_DATABASE_URL;
 }
 
-function resolvePoolSize(): number {
-  const raw = Number(process.env.DATABASE_POOL_MAX ?? 5);
-  if (!Number.isFinite(raw) || raw < 1) {
-    return 5;
-  }
-  return Math.floor(raw);
+function isServerlessRuntime(): boolean {
+  return Boolean(
+    process.env.NETLIFY ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      process.env.VERCEL ||
+      process.env.CLOUDFLARE_WORKER
+  );
 }
 
-const pool =
-  global.__creatorhubDbPool ??
-  new Pool({
+function resolvePoolSize(): number {
+  const explicit = process.env.DATABASE_POOL_MAX;
+  if (explicit) {
+    const parsed = Number(explicit);
+    if (Number.isFinite(parsed) && parsed >= 1) {
+      return Math.floor(parsed);
+    }
+  }
+
+  // Each serverless instance gets its own pool. Default low so concurrent
+  // function invocations don't exhaust the managed Postgres connection limit.
+  // Override via DATABASE_POOL_MAX for long-lived servers.
+  return isServerlessRuntime() ? 2 : 5;
+}
+
+function shouldAutoRunMigrations(): boolean {
+  const configured = process.env.DB_AUTO_MIGRATE?.trim().toLowerCase();
+  if (configured === "true") {
+    return true;
+  }
+
+  if (configured === "false") {
+    return false;
+  }
+
+  return process.env.NODE_ENV !== "production";
+}
+
+function resolveSslConfig(): false | { rejectUnauthorized: boolean; ca?: string } {
+  const sslEnabled = process.env.DATABASE_SSL === "true";
+  const caCert = process.env.DATABASE_CA_CERT?.trim();
+  const rejectOverride = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED?.trim().toLowerCase();
+
+  if (!sslEnabled && !caCert) {
+    return false;
+  }
+
+  // Explicit opt-out for legacy providers without a CA chain. Logged loudly so
+  // operators see it in production logs and can plan to fix it.
+  if (rejectOverride === "false") {
+    if (process.env.NODE_ENV === "production") {
+      console.warn(
+        "[db] DATABASE_SSL_REJECT_UNAUTHORIZED=false in production: TLS certificate validation disabled. This permits MITM. Provide DATABASE_CA_CERT instead."
+      );
+    }
+    return { rejectUnauthorized: false };
+  }
+
+  return {
+    rejectUnauthorized: true,
+    ...(caCert ? { ca: caCert } : {}),
+  };
+}
+
+function getPool(): Pool {
+  if (global.__creatorhubDbPool) {
+    return global.__creatorhubDbPool;
+  }
+
+  const ssl = resolveSslConfig();
+  const pool = new Pool({
     connectionString: resolveDatabaseUrl(),
     max: resolvePoolSize(),
-    ssl:
-      process.env.DATABASE_SSL === "true"
-        ? {
-            rejectUnauthorized: false,
-          }
-        : undefined,
+    ssl: ssl === false ? undefined : ssl,
   });
 
-if (!global.__creatorhubDbPool) {
   global.__creatorhubDbPool = pool;
+  return pool;
 }
 
 const transactionStore = new AsyncLocalStorage<PoolClient>();
@@ -108,7 +203,15 @@ function compileStatement(sql: string, args: unknown[]): { text: string; values:
   return { text, values: args };
 }
 
+// Stable per-app advisory lock key. Any 64-bit int works; this one is derived
+// from "creatorhub.schema_migrations" so it never collides with user code that
+// also uses advisory locks. Stored as a string so pg passes it as bigint
+// without losing precision (and so we don't depend on BigInt literal syntax).
+const MIGRATION_ADVISORY_LOCK_KEY = "7427183623510918";
+
 async function runMigrations(): Promise<void> {
+  const pool = getPool();
+
   await fsAsync.mkdir(MIGRATIONS_DIR, { recursive: true });
 
   await pool.query(
@@ -132,6 +235,8 @@ async function runMigrations(): Promise<void> {
 
   try {
     await client.query("BEGIN");
+    // Serialize concurrent boots across function instances. Released on COMMIT/ROLLBACK.
+    await client.query("SELECT pg_advisory_xact_lock($1)", [MIGRATION_ADVISORY_LOCK_KEY]);
 
     const appliedRows = await client.query<{ version: string }>(
       "SELECT version FROM schema_migrations"
@@ -166,14 +271,20 @@ async function runMigrations(): Promise<void> {
 }
 
 async function initializeDb(): Promise<void> {
+  const pool = getPool();
   await pool.query("SELECT 1");
-  await runMigrations();
+  if (shouldAutoRunMigrations()) {
+    await runMigrations();
+  }
   await pool.query("SELECT 1");
 }
 
 async function ensureDbInitialized(): Promise<void> {
   if (!global.__creatorhubDbInitPromise) {
-    global.__creatorhubDbInitPromise = initializeDb();
+    global.__creatorhubDbInitPromise = initializeDb().catch((error) => {
+      global.__creatorhubDbInitPromise = undefined;
+      throw error;
+    });
   }
 
   await global.__creatorhubDbInitPromise;
@@ -187,6 +298,7 @@ async function executeQuery<T extends QueryResultRow = QueryResultRow>(
 
   const statement = compileStatement(sql, args);
   const txClient = transactionStore.getStore();
+  const pool = getPool();
 
   const result = txClient
     ? await txClient.query<T>(statement.text, statement.values)
@@ -238,7 +350,7 @@ const db = {
       return await fn();
     }
 
-    const client = await pool.connect();
+    const client = await getPool().connect();
 
     try {
       await client.query("BEGIN");
@@ -254,7 +366,10 @@ const db = {
   },
 
   async close(): Promise<void> {
-    await pool.end();
+    const pool = global.__creatorhubDbPool;
+    if (pool) {
+      await pool.end();
+    }
     global.__creatorhubDbPool = undefined;
     global.__creatorhubDbInitPromise = undefined;
   },

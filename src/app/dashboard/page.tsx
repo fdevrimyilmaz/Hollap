@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   useCallback,
@@ -9,8 +9,17 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import {
+  LayoutDashboard,
+  BookOpen,
+  Users,
+  BarChart3,
+  Settings,
+  Bell,
+  LogOut
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +27,7 @@ import { Progress } from "@/components/ui/progress";
 import { showToast } from "@/components/ToastProvider";
 import { NotificationsDropdown } from "@/components/Notifications";
 import { useNotificationCenter } from "@/components/NotificationCenter";
+import { cn } from "@/lib/utils";
 
 type StatItem = { label: string; value: string; change: string };
 type SaleItem = { name: string; product: string; amount: string; time: string };
@@ -89,9 +99,57 @@ async function readErrorMessage(response: Response): Promise<string> {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const { refreshNotifications } = useNotificationCenter();
 
+  // Kullanıcı bilgisini (rolü dahil) tutan state
+  const [user, setUser] = useState<{ name: string; role: 'creator' | 'subscriber' } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDashboardLoading, setIsDashboardLoading] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const response = await fetch("/api/auth/me", { cache: "no-store" });
+        if (!response.ok) {
+          router.push("/login");
+          return;
+        }
+
+        const data = (await response.json()) as { user?: { name: string; role: "creator" | "subscriber" } };
+        if (!data.user) {
+          router.push("/login");
+          return;
+        }
+
+        setUser(data.user);
+      } catch {
+        router.push("/login");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    void fetchUser();
+  }, [router]);
+
+  const sidebarItems = useMemo(() => {
+    if (!user) return [];
+
+    const items = [
+      { icon: LayoutDashboard, label: "Panel", href: "/dashboard", roles: ["creator", "subscriber"] },
+      { icon: BookOpen, label: "İçeriklerim", href: "/dashboard/content", roles: ["creator"] },
+      { icon: BookOpen, label: "Kurslarım", href: "/courses", roles: ["subscriber"] },
+      { icon: Users, label: "Aboneler", href: "/dashboard/subscribers", roles: ["creator"] },
+      { icon: BarChart3, label: "Analizler", href: "/dashboard/analytics", roles: ["creator"] },
+      { icon: Bell, label: "Bildirimler", href: "/dashboard/notifications", roles: ["subscriber"] },
+      { icon: Settings, label: "Ayarlar", href: "/dashboard/settings", roles: ["creator", "subscriber"] },
+    ];
+
+    // Kullanıcının rolüne göre menü öğelerini filtrele
+    return items.filter((item) => item.roles.includes(user.role));
+  }, [user]);
+
   const [stats, setStats] = useState<StatItem[]>([]);
   const [recentSales, setRecentSales] = useState<SaleItem[]>([]);
   const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
@@ -110,6 +168,7 @@ export default function DashboardPage() {
   const [newProductStock, setNewProductStock] = useState("50");
   const [productDrafts, setProductDrafts] = useState<Record<string, ProductDraft>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isCreator = user?.role === "creator";
 
   const productById = useMemo(
     () => Object.fromEntries(products.map((product) => [product.id, product])) as Record<string, Product>,
@@ -117,6 +176,7 @@ export default function DashboardPage() {
   );
 
   const loadDashboard = useCallback(async () => {
+    setIsDashboardLoading(true);
     try {
       const response = await fetch("/api/dashboard", { cache: "no-store" });
       if (response.status === 401 || response.status === 403) {
@@ -137,7 +197,7 @@ export default function DashboardPage() {
     } catch (error) {
       showToast.error("Dashboard yuklenemedi", error instanceof Error ? error.message : "Bilinmeyen hata");
     } finally {
-      setIsLoading(false);
+      setIsDashboardLoading(false);
     }
   }, [router]);
 
@@ -159,12 +219,30 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    if (user.role !== "creator") {
+      setStats([]);
+      setRecentSales([]);
+      setLiveSessions([]);
+      setProducts([]);
+      setDmOrders([]);
+      setSentFilesLog([]);
+      return;
+    }
+
     void loadDashboard();
-  }, [loadDashboard]);
+  }, [loadDashboard, user]);
 
   useEffect(() => {
+    if (!user) {
+      return;
+    }
+
     void loadSessions();
-  }, [loadSessions]);
+  }, [loadSessions, user]);
 
   useEffect(() => {
     setProductDrafts(
@@ -427,16 +505,93 @@ export default function DashboardPage() {
     }
   };
 
+  const logout = async () => {
+    if (isLoggingOut) {
+      return;
+    }
+
+    setIsLoggingOut(true);
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+
+      router.push("/login");
+      router.refresh();
+    } catch (error) {
+      showToast.error("Cikis yapilamadi", error instanceof Error ? error.message : "Bilinmeyen hata");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
+  if (isLoading || !user) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0B] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-orange-500" />
+      </div>
+    );
+  }
+
   return (
-    <main className="min-h-screen p-6 bg-background space-y-6">
+    <div className="min-h-screen bg-[#0A0A0B] text-white flex">
+      {/* Sidebar */}
+      <aside className="w-64 border-r border-white/5 bg-black/20 backdrop-blur-xl hidden md:flex flex-col">
+        <div className="p-6">
+          <Link href="/" className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg gradient-bg flex items-center justify-center shadow-lg">
+              <span className="text-white font-bold text-sm">H</span>
+            </div>
+            <span className="text-xl font-bold">
+              Holl<span className="gradient-text">ap</span>
+            </span>
+          </Link>
+        </div>
+
+        <nav className="flex-1 px-4 space-y-2">
+          {sidebarItems.map((item) => (
+            <Link
+              key={item.label}
+              href={item.href}
+              className={cn(
+                "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group",
+                pathname === item.href 
+                  ? "bg-orange-500/10 text-orange-500" 
+                  : "text-muted-foreground hover:bg-white/5 hover:text-white"
+              )}
+            >
+              <item.icon className={cn("w-5 h-5", pathname === item.href ? "text-orange-500" : "group-hover:text-white")} />
+              <span className="font-medium">{item.label}</span>
+            </Link>
+          ))}
+        </nav>
+
+        <div className="p-4 border-t border-white/5">
+          <button
+            type="button"
+            disabled={isLoggingOut}
+            onClick={() => void logout()}
+            className="flex items-center gap-3 px-4 py-3 w-full text-muted-foreground hover:text-red-400 transition-colors disabled:opacity-60"
+          >
+            <LogOut className="w-5 h-5" />
+            <span className="font-medium">{isLoggingOut ? "Cikis yapiliyor..." : "Çıkış Yap"}</span>
+          </button>
+        </div>
+      </aside>
+
+      <main className="flex-1 flex flex-col relative overflow-hidden">
+        <div className="absolute inset-0 mesh-gradient opacity-30" />
+        <div className="p-8 relative z-10 overflow-y-auto space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white">Dashboard</h1>
           <p className="text-sm text-muted-foreground">
-            {isLoading ? "Yukleniyor..." : "Gercek backend + kalici veri aktif"}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Demo hesaplar: `creator@hollap.dev / creator123`, `student@hollap.dev / student123`
+            {isCreator
+              ? isDashboardLoading
+                ? "Yukleniyor..."
+                : "Gercek backend + kalici veri aktif"
+              : "Abonelik paneliniz hazir"}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -449,18 +604,16 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {stats.map((stat) => (
-          <Card key={stat.label} className="glass-card border-white/10">
-            <CardContent className="p-5">
-              <p className="text-sm text-muted-foreground">{stat.label}</p>
-              <p className="text-2xl font-semibold text-white mt-1">{stat.value}</p>
-              <Badge className="mt-2 bg-green-500/20 text-green-500 border-0">{stat.change}</Badge>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
 
+      {/* ROL KONTROLÜ BURADA YAPILIYOR */}
+      {isCreator ? (
+        <CreatorDashboardView stats={stats} />
+      ) : (
+        <SubscriberDashboardView />
+      )}
+
+      {isCreator && (
+        <>
       <div className="grid gap-6 xl:grid-cols-2">
         <Card className="glass-card border-white/10">
           <CardHeader>
@@ -670,6 +823,8 @@ export default function DashboardPage() {
           ))}
         </CardContent>
       </Card>
+        </>
+      )}
 
       <Card className="glass-card border-white/10">
         <CardHeader className="flex flex-row items-center justify-between">
@@ -736,7 +891,64 @@ export default function DashboardPage() {
           })}
         </CardContent>
       </Card>
-    </main>
+        </div>
+      </main>
+    </div>
   );
 }
 
+// --- Rol Bazlı Bileşenler (Geçici Tanımlar) ---
+
+function CreatorDashboardView({ stats }: { stats: StatItem[] }) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {stats.map((stat) => (
+        <Card key={stat.label} className="glass-card border-white/10">
+          <CardContent className="p-5">
+            <p className="text-sm text-muted-foreground">{stat.label}</p>
+            <p className="text-2xl font-semibold text-white mt-1">{stat.value}</p>
+            <Badge className="mt-2 bg-green-500/20 text-green-500 border-0">{stat.change}</Badge>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function SubscriberDashboardView() {
+  return (
+    <div className="grid gap-6 lg:grid-cols-3">
+      <Card className="glass-card border-white/10 lg:col-span-2">
+        <CardHeader>
+          <CardTitle className="text-white">Öğrenim Panelim</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Kurslarinizi takip etmek, yeni icerik bulmak ve kaldiginiz yerden devam etmek icin hizli kisayollar.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild size="sm" className="gradient-bg text-white border-0">
+              <Link href="/courses">Kurslara Git</Link>
+            </Button>
+            <Button asChild size="sm" variant="outline" className="border-white/10">
+              <Link href="/explore">Kesfet</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="glass-card border-white/10">
+        <CardHeader>
+          <CardTitle className="text-white">Bildirimler</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Yeni icerikler, DM odeme ve sistem duyurulari icin bildirimlerini kontrol et.
+          </p>
+          <Button asChild size="sm" variant="outline" className="border-white/10">
+            <Link href="/dashboard/notifications">Bildirimlere Git</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

@@ -2,27 +2,10 @@
 const nextConfig = {
   allowedDevOrigins: ["*.preview.same-app.com"],
   async headers() {
-    const csp = [
-      "default-src 'self'",
-      "base-uri 'self'",
-      "form-action 'self'",
-      "frame-ancestors 'none'",
-      "object-src 'none'",
-      "script-src 'self' 'unsafe-inline'",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https:",
-      "font-src 'self' data: https:",
-      "connect-src 'self' https: wss:",
-    ].join("; ");
-
     return [
       {
         source: "/(.*)",
         headers: [
-          {
-            key: "Content-Security-Policy",
-            value: csp,
-          },
           {
             key: "X-Frame-Options",
             value: "DENY",

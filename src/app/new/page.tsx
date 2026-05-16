@@ -1,12 +1,14 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { Header } from "@/components/layout/Header";
 import Image from "next/image";
 import { Footer } from "@/components/layout/Footer";
 import { Badge } from "@/components/ui/badge";
-import { courses } from "@/lib/data";
+import { listCatalogProducts } from "@/lib/server/catalog";
 
-export default function NewContentPage() {
-  const latestCourses = [...courses].sort((a, b) => Number(b.id) - Number(a.id));
+export const dynamic = "force-dynamic";
+
+export default async function NewContentPage() {
+  const latestCourses = await listCatalogProducts({ includeOutOfStock: true });
 
   return (
     <main className="min-h-screen relative">
@@ -19,7 +21,7 @@ export default function NewContentPage() {
           </Badge>
           <h1 className="text-4xl sm:text-5xl font-bold text-white mb-4">Yeni Eklenenler</h1>
           <p className="text-lg text-muted-foreground max-w-3xl">
-            Son eklenen kurslari tarih sirasina gore inceleyebilirsin.
+            Son eklenen urunleri tarih sirasina gore inceleyebilirsin.
           </p>
         </div>
       </section>
@@ -32,7 +34,7 @@ export default function NewContentPage() {
                 <div className="w-full sm:w-40 h-24 rounded-xl overflow-hidden shrink-0">
                   <Image
                     src={course.thumbnail}
-                    alt={course.title}
+                    alt={course.name}
                     width={160}
                     height={96}
                     sizes="(min-width: 640px) 160px, 100vw"
@@ -42,13 +44,13 @@ export default function NewContentPage() {
                 <div className="flex-1">
                   <p className="text-xs text-muted-foreground mb-1">Yayin #{index + 1}</p>
                   <h2 className="text-lg font-semibold text-white group-hover:text-orange-500 transition-colors">
-                    {course.title}
+                    {course.name}
                   </h2>
                   <p className="text-sm text-muted-foreground line-clamp-2">{course.description}</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-sm text-muted-foreground">{course.creator.name}</p>
-                  <p className="text-lg font-bold gradient-text">${course.price}</p>
+                  <p className="text-sm text-muted-foreground">{course.creatorName}</p>
+                  <p className="text-lg font-bold gradient-text">${(course.amountCents / 100).toFixed(2)}</p>
                 </div>
               </article>
             </Link>

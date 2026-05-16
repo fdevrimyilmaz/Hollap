@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -15,7 +16,17 @@ const navigation = [
 ];
 
 export function Header() {
+  const router = useRouter();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const submitSearch = (event: FormEvent) => {
+    event.preventDefault();
+    const query = searchQuery.trim();
+    const href = query.length ? `/explore?q=${encodeURIComponent(query)}` : "/explore";
+    router.push(href);
+    setIsSearchOpen(false);
+  };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 glass border-b border-white/5">
@@ -49,15 +60,17 @@ export function Header() {
 
           {/* Search Bar - Desktop */}
           <div className="hidden md:flex items-center flex-1 max-w-md mx-8">
-            <div className="relative w-full">
+            <form onSubmit={submitSearch} className="relative w-full">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <Input
                 placeholder="Kurs, yaratici veya kategori ara..."
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
                 className="pl-10 bg-white/5 border-white/10 focus:border-orange-500/50 focus:ring-orange-500/20 h-10"
               />
-            </div>
+            </form>
           </div>
 
           {/* Right Section */}
@@ -131,15 +144,17 @@ export function Header() {
         {/* Mobile Search Bar */}
         {isSearchOpen && (
           <div className="md:hidden pb-4 animate-fade-in">
-            <div className="relative">
+            <form onSubmit={submitSearch} className="relative">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <Input
                 placeholder="Ara..."
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
                 className="pl-10 bg-white/5 border-white/10"
               />
-            </div>
+            </form>
           </div>
         )}
       </div>

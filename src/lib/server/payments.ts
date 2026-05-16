@@ -37,7 +37,22 @@ type SubscriptionRow = {
   tier: string;
 };
 
+type CreatorTipStatus = "pending" | "paid" | "failed" | "refunded";
+
+type CreatorTipRow = {
+  id: string;
+  creator_id: string;
+  tipper_id: string;
+  amount_cents: number;
+  status: CreatorTipStatus;
+  payment_ref: string | null;
+};
+
 let stripeClient: Stripe | null = null;
+
+// Pinned to the API version the installed Stripe SDK was tested against.
+// Bump together with the `stripe` package; never edit independently.
+export const STRIPE_API_VERSION: Stripe.LatestApiVersion = "2026-01-28.clover";
 
 export class StripeWebhookSignatureError extends Error {
   constructor() {
@@ -61,7 +76,7 @@ function getStripeClient(): Stripe {
   }
 
   stripeClient = new Stripe(secretKey, {
-    apiVersion: "2026-01-28.clover",
+    apiVersion: STRIPE_API_VERSION,
   });
 
   return stripeClient;
@@ -241,6 +256,10 @@ function unixToIso(unixSeconds: number | null | undefined): string | null {
   }
 
   return new Date(unixSeconds * 1000).toISOString();
+}
+
+function formatCurrencyFromCents(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
 }
 
 function sanitizeWebhookError(error: unknown): string {
@@ -517,6 +536,411 @@ function readSubscriptionCurrentPeriodEnd(subscription: Stripe.Subscription): st
   return unixToIso(withCurrentPeriod.current_period_end);
 }
 
+function readPaymentRefFromCheckoutSession(session: Stripe.Checkout.Session): string {
+  const paymentIntentId = resolveExpandableId(session.payment_intent);
+  if (paymentIntentId) {
+    return paymentIntentId;
+  }
+
+  return session.id;
+}
+
+async function tryAutoRefundPaymentIntent(
+  paymentIntentId: string | null,
+  reason: string
+): Promise<boolean> {
+  if (!paymentIntentId) {
+    return false;
+  }
+
+  try {
+    const stripe = getStripeClient();
+    await stripe.refunds.create(
+      {
+        payment_intent: paymentIntentId,
+        metadata: {
+          source: "hollap_auto",
+          reason,
+        },
+      },
+      {
+        idempotencyKey: `auto_refund_${paymentIntentId}`,
+      }
+    );
+    return true;
+  } catch (error) {
+    logError("stripe.refund.auto_failed", {
+      paymentIntentId,
+      reason,
+      error: sanitizeWebhookError(error),
+    });
+    return false;
+  }
+}
+
+async function handleMarketplaceCheckoutSessionCompleted(
+  session: Stripe.Checkout.Session
+): Promise<void> {
+  const metadata = session.metadata ?? null;
+  const buyerId =
+    readMetadataValue(metadata, "buyerId") ??
+    readMetadataValue(metadata, "subscriberId") ??
+    readMetadataValue(metadata, "userId");
+  const creatorId = readMetadataValue(metadata, "creatorId");
+  const productId = readMetadataValue(metadata, "productId");
+  const paymentRef = readPaymentRefFromCheckoutSession(session);
+
+  if (!buyerId || !creatorId || !productId) {
+    await writeAuditLog({
+      actorUserId: buyerId,
+      action: "payment.checkout_completed_missing_metadata",
+      entityType: "checkout_session",
+      entityId: session.id,
+      metadata: {
+        buyerId: buyerId ?? null,
+        creatorId: creatorId ?? null,
+        productId: productId ?? null,
+        metadataKeys: metadata ? Object.keys(metadata).sort() : [],
+      },
+    });
+    return;
+  }
+
+  const fulfillment = await db.transaction(async () => {
+    let amountCents = typeof session.amount_total === "number" ? session.amount_total : 0;
+    let productName = "Urun";
+
+    const existingSale = await db
+      .prepare("SELECT id FROM sales WHERE payment_ref = ?")
+      .get(paymentRef) as { id: string } | undefined;
+
+    if (existingSale) {
+      return { state: "duplicate" as const, amountCents, productName };
+    }
+
+    const product = await db
+      .prepare(
+        `
+          SELECT id, creator_id, name, price_cents, stock, is_active
+          FROM products
+          WHERE id = ?
+        `
+      )
+      .get(productId) as
+      | { id: string; creator_id: string; name: string; price_cents: number; stock: number; is_active: number }
+      | undefined;
+
+    if (!product || !product.is_active || product.creator_id !== creatorId) {
+      return { state: "invalid_product" as const, amountCents, productName };
+    }
+
+    productName = product.name;
+    amountCents = amountCents > 0 ? amountCents : product.price_cents;
+
+    const stockResult = await db.prepare(
+      `
+        UPDATE products
+        SET stock = stock - 1,
+            sold = sold + 1,
+            updated_at = ?
+        WHERE id = ?
+          AND is_active = 1
+          AND stock > 0
+      `
+    ).run(nowIso(), product.id);
+
+    if (stockResult.changes === 0) {
+      return { state: "out_of_stock" as const, amountCents, productName };
+    }
+
+    await db.prepare(
+      `
+        INSERT INTO sales (
+          id,
+          creator_id,
+          buyer_id,
+          product_id,
+          order_id,
+          amount_cents,
+          source,
+          payment_provider,
+          payment_ref,
+          created_at
+        )
+        VALUES (?, ?, ?, ?, NULL, ?, 'checkout', 'stripe', ?, ?)
+      `
+    ).run(
+      createId("sale"),
+      creatorId,
+      buyerId,
+      product.id,
+      amountCents,
+      paymentRef,
+      nowIso()
+    );
+
+    return { state: "fulfilled" as const, amountCents, productName };
+  });
+
+  const fulfillmentState = fulfillment.state;
+  const amountCents = fulfillment.amountCents;
+  const productName = fulfillment.productName;
+
+  if (fulfillmentState === "duplicate") {
+    return;
+  }
+
+  if (fulfillmentState === "invalid_product" || fulfillmentState === "out_of_stock") {
+    const refunded = await tryAutoRefundPaymentIntent(
+      resolveExpandableId(session.payment_intent),
+      fulfillmentState
+    );
+
+    await enqueueNotification({
+      userId: buyerId,
+      type: "system",
+      title: "Odeme iade surecine alindi",
+      message:
+        fulfillmentState === "out_of_stock"
+          ? "Urun stokta kalmadi. Odemeniz otomatik iade surecine alindi."
+          : "Urun dogrulanamadi. Odemeniz otomatik iade surecine alindi.",
+      link: "/checkout",
+      channels: ["in_app", "email"],
+    });
+
+    await writeAuditLog({
+      actorUserId: buyerId,
+      action: "payment.checkout_refund_triggered",
+      entityType: "checkout_session",
+      entityId: session.id,
+      metadata: {
+        reason: fulfillmentState,
+        refunded,
+        paymentIntentId: resolveExpandableId(session.payment_intent),
+      },
+    });
+
+    return;
+  }
+
+  await enqueueNotification({
+    userId: creatorId,
+    type: "sale",
+    title: "Yeni satis",
+    message: `${productName} urununuz satin alindi.`,
+    link: "/dashboard",
+    channels: ["in_app", "email", "push"],
+  });
+
+  await enqueueNotification({
+    userId: buyerId,
+    type: "sale",
+    title: "Odemeniz onaylandi",
+    message: `${productName} satin alma isleminiz basariyla tamamlandi.`,
+    link: "/dashboard",
+    channels: ["in_app", "email"],
+  });
+
+  await writeAuditLog({
+    actorUserId: buyerId,
+    action: "payment.checkout_completed",
+    entityType: "sale",
+    entityId: paymentRef,
+    metadata: {
+      checkoutSessionId: session.id,
+      productId,
+      creatorId,
+      amountCents,
+    },
+  });
+}
+
+async function handleTipCheckoutSessionCompleted(
+  session: Stripe.Checkout.Session
+): Promise<void> {
+  const metadata = session.metadata ?? null;
+  const tipIdFromMetadata = readMetadataValue(metadata, "tipId");
+  const creatorId = readMetadataValue(metadata, "creatorId");
+  const tipperId =
+    readMetadataValue(metadata, "tipperId") ??
+    readMetadataValue(metadata, "buyerId") ??
+    readMetadataValue(metadata, "subscriberId") ??
+    readMetadataValue(metadata, "userId");
+  const paymentRef = readPaymentRefFromCheckoutSession(session);
+
+  const fulfillment = await db.transaction(async () => {
+    const existingTip = await db
+      .prepare(
+        `
+          SELECT id, creator_id, tipper_id, amount_cents, status, payment_ref
+          FROM creator_tips
+          WHERE payment_ref = ?
+        `
+      )
+      .get(paymentRef) as CreatorTipRow | undefined;
+
+    if (existingTip) {
+      return { state: "duplicate" as const };
+    }
+
+    if (!creatorId || !tipperId) {
+      return { state: "missing_identity" as const };
+    }
+
+    if (creatorId === tipperId) {
+      return { state: "self_tip" as const };
+    }
+
+    const creator = await db
+      .prepare("SELECT id, name, role FROM users WHERE id = ?")
+      .get(creatorId) as { id: string; name: string; role: string } | undefined;
+    const tipper = await db
+      .prepare("SELECT id, name FROM users WHERE id = ?")
+      .get(tipperId) as { id: string; name: string } | undefined;
+
+    if (!creator || creator.role !== "creator" || !tipper) {
+      return { state: "invalid_participants" as const };
+    }
+
+    let amountCents = typeof session.amount_total === "number" ? session.amount_total : 0;
+
+    if (amountCents <= 0 && tipIdFromMetadata) {
+      const pendingTip = await db
+        .prepare("SELECT amount_cents FROM creator_tips WHERE id = ?")
+        .get(tipIdFromMetadata) as { amount_cents: number } | undefined;
+      amountCents = pendingTip?.amount_cents ?? 0;
+    }
+
+    if (amountCents <= 0) {
+      return { state: "invalid_amount" as const };
+    }
+
+    const tipId = tipIdFromMetadata ?? createId("tip");
+    const paymentIntentId = resolveExpandableId(session.payment_intent);
+    const timestamp = nowIso();
+
+    await db.prepare(
+      `
+        INSERT INTO creator_tips (
+          id,
+          creator_id,
+          tipper_id,
+          amount_cents,
+          status,
+          checkout_session_id,
+          payment_intent_id,
+          payment_provider,
+          payment_ref,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, 'paid', ?, ?, 'stripe', ?, ?, ?)
+        ON CONFLICT (id) DO UPDATE SET
+          creator_id = EXCLUDED.creator_id,
+          tipper_id = EXCLUDED.tipper_id,
+          amount_cents = EXCLUDED.amount_cents,
+          status = 'paid',
+          checkout_session_id = COALESCE(EXCLUDED.checkout_session_id, creator_tips.checkout_session_id),
+          payment_intent_id = COALESCE(EXCLUDED.payment_intent_id, creator_tips.payment_intent_id),
+          payment_provider = EXCLUDED.payment_provider,
+          payment_ref = COALESCE(EXCLUDED.payment_ref, creator_tips.payment_ref),
+          updated_at = EXCLUDED.updated_at
+      `
+    ).run(
+      tipId,
+      creator.id,
+      tipper.id,
+      amountCents,
+      session.id,
+      paymentIntentId,
+      paymentRef,
+      timestamp,
+      timestamp
+    );
+
+    return {
+      state: "fulfilled" as const,
+      tipId,
+      creatorId: creator.id,
+      creatorName: creator.name,
+      tipperId: tipper.id,
+      tipperName: tipper.name,
+      amountCents,
+    };
+  });
+
+  if (fulfillment.state === "duplicate") {
+    return;
+  }
+
+  if (fulfillment.state !== "fulfilled") {
+    const refunded = await tryAutoRefundPaymentIntent(
+      resolveExpandableId(session.payment_intent),
+      `tip_${fulfillment.state}`
+    );
+
+    if (tipperId) {
+      await enqueueNotification({
+        userId: tipperId,
+        type: "system",
+        title: "Bahsis iade surecine alindi",
+        message: "Bahsis odemesi dogrulanamadi ve otomatik iade surecine alindi.",
+        link: "/creators",
+        channels: ["in_app", "email"],
+      });
+    }
+
+    await writeAuditLog({
+      actorUserId: tipperId,
+      action: "payment.tip_refund_triggered",
+      entityType: "checkout_session",
+      entityId: session.id,
+      metadata: {
+        reason: fulfillment.state,
+        refunded,
+        creatorId,
+        tipperId,
+        paymentIntentId: resolveExpandableId(session.payment_intent),
+      },
+    });
+
+    return;
+  }
+
+  const amountLabel = formatCurrencyFromCents(fulfillment.amountCents);
+
+  await enqueueNotification({
+    userId: fulfillment.creatorId,
+    type: "sale",
+    title: "Yeni bahsis",
+    message: `${fulfillment.tipperName} size ${amountLabel} bahsis gonderdi.`,
+    link: "/dashboard",
+    channels: ["in_app", "email", "push"],
+  });
+
+  await enqueueNotification({
+    userId: fulfillment.tipperId,
+    type: "sale",
+    title: "Bahsis gonderildi",
+    message: `${fulfillment.creatorName} icin ${amountLabel} bahsisiniz basariyla gonderildi.`,
+    link: "/dashboard",
+    channels: ["in_app", "email"],
+  });
+
+  await writeAuditLog({
+    actorUserId: fulfillment.tipperId,
+    action: "payment.tip_completed",
+    entityType: "creator_tip",
+    entityId: fulfillment.tipId,
+    metadata: {
+      checkoutSessionId: session.id,
+      creatorId: fulfillment.creatorId,
+      amountCents: fulfillment.amountCents,
+      paymentRef,
+    },
+  });
+}
+
 async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void> {
   const session = event.data.object as Stripe.Checkout.Session;
   const stripeSubscriptionId = resolveExpandableId(session.subscription);
@@ -549,8 +973,19 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
   }
 
   const orderId = session.metadata?.orderId;
+  const flow = readMetadataValue(session.metadata ?? null, "flow");
 
   if (!orderId) {
+    if (flow === "tip") {
+      await handleTipCheckoutSessionCompleted(session);
+      return;
+    }
+
+    if (flow === "checkout") {
+      await handleMarketplaceCheckoutSessionCompleted(session);
+      return;
+    }
+
     await writeAuditLog({
       action: "payment.checkout_completed_without_order",
       entityType: "checkout_session",
@@ -580,23 +1015,44 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
     return;
   }
 
-  await db.transaction(async () => {
-    await db.prepare(
-      `
-        UPDATE dm_orders
-        SET status = 'paid',
-            checkout_session_id = ?,
-            payment_intent_id = ?,
-            updated_at = ?
-        WHERE id = ?
-      `
-    ).run(session.id, String(session.payment_intent ?? ""), nowIso(), order.id);
+  let outOfStock = false;
+  const paymentRef = readPaymentRefFromCheckoutSession(session);
 
+  await db.transaction(async () => {
     const alreadySale = await db
       .prepare("SELECT id FROM sales WHERE order_id = ?")
       .get(order.id) as { id: string } | undefined;
 
     if (!alreadySale) {
+      const stockResult = await db.prepare(
+        `
+          UPDATE products
+          SET stock = stock - 1,
+              sold = sold + 1,
+              updated_at = ?
+          WHERE id = ?
+            AND is_active = 1
+            AND stock > 0
+        `
+      ).run(nowIso(), order.product_id);
+
+      if (stockResult.changes === 0) {
+        outOfStock = true;
+
+        await db.prepare(
+          `
+            UPDATE dm_orders
+            SET status = 'failed',
+                checkout_session_id = ?,
+                payment_intent_id = ?,
+                updated_at = ?
+            WHERE id = ?
+          `
+        ).run(session.id, paymentRef, nowIso(), order.id);
+
+        return;
+      }
+
       await db.prepare(
         `
           INSERT INTO sales (
@@ -620,21 +1076,61 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
         order.product_id,
         order.id,
         order.amount_cents,
-        session.payment_intent ? String(session.payment_intent) : session.id,
+        paymentRef,
         nowIso()
       );
-
-      await db.prepare(
-        `
-          UPDATE products
-          SET stock = CASE WHEN stock > 0 THEN stock - 1 ELSE 0 END,
-              sold = sold + 1,
-              updated_at = ?
-          WHERE id = ?
-        `
-      ).run(nowIso(), order.product_id);
     }
+
+    await db.prepare(
+      `
+        UPDATE dm_orders
+        SET status = 'paid',
+            checkout_session_id = ?,
+            payment_intent_id = ?,
+            updated_at = ?
+        WHERE id = ?
+      `
+    ).run(session.id, paymentRef, nowIso(), order.id);
   });
+
+  if (outOfStock) {
+    const refunded = await tryAutoRefundPaymentIntent(
+      resolveExpandableId(session.payment_intent),
+      "dm_out_of_stock"
+    );
+
+    await enqueueNotification({
+      userId: order.creator_id,
+      type: "system",
+      title: "DM siparisi iade surecine alindi",
+      message: "Stok tukenmesi nedeniyle odeme otomatik iade surecine alindi.",
+      link: "/dashboard",
+      channels: ["in_app", "email"],
+    });
+
+    await enqueueNotification({
+      userId: order.subscriber_id,
+      type: "system",
+      title: "Odeme iade surecine alindi",
+      message: "Stok tukenmesi nedeniyle odemeniz otomatik iade surecine alindi.",
+      link: "/dashboard",
+      channels: ["in_app", "email"],
+    });
+
+    await writeAuditLog({
+      actorUserId: order.subscriber_id,
+      action: "payment.dm_refund_triggered",
+      entityType: "dm_order",
+      entityId: order.id,
+      metadata: {
+        reason: "out_of_stock",
+        refunded,
+        checkoutSessionId: session.id,
+      },
+    });
+
+    return;
+  }
 
   const product = await db
     .prepare("SELECT name FROM products WHERE id = ?")
@@ -665,7 +1161,7 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
     entityId: order.id,
     metadata: {
       checkoutSessionId: session.id,
-      paymentIntentId: session.payment_intent,
+      paymentIntentId: resolveExpandableId(session.payment_intent),
     },
   });
 }
@@ -745,38 +1241,88 @@ async function handlePaymentFailure(event: Stripe.Event): Promise<void> {
     | { id: string; creator_id: string; subscriber_id: string }
     | undefined;
 
-  if (!order) {
+  if (order) {
+    await db.prepare("UPDATE dm_orders SET status = 'failed', updated_at = ? WHERE id = ?").run(
+      nowIso(),
+      order.id
+    );
+
+    await enqueueNotification({
+      userId: order.creator_id,
+      type: "system",
+      title: "Odeme basarisiz",
+      message: `DM siparisi (${order.id}) odeme hatasi aldi.`,
+      link: "/dashboard",
+      channels: ["in_app", "email"],
+    });
+
+    await enqueueNotification({
+      userId: order.subscriber_id,
+      type: "system",
+      title: "Odeme basarisiz",
+      message: "Odemeniz tamamlanamadi, kart bilgilerinizi kontrol edip tekrar deneyin.",
+      link: "/dashboard",
+      channels: ["in_app", "email"],
+    });
+
+    await writeAuditLog({
+      actorUserId: order.subscriber_id,
+      action: "payment.failed",
+      entityType: "dm_order",
+      entityId: order.id,
+      metadata: {
+        paymentIntentId: paymentIntent.id,
+        reason: paymentIntent.last_payment_error?.code ?? null,
+      },
+    });
+
     return;
   }
 
-  await db.prepare("UPDATE dm_orders SET status = 'failed', updated_at = ? WHERE id = ?").run(
-    nowIso(),
-    order.id
-  );
+  const tip = await db
+    .prepare(
+      `
+        SELECT id, creator_id, tipper_id
+        FROM creator_tips
+        WHERE payment_intent_id = ?
+          OR payment_ref = ?
+      `
+    )
+    .get(paymentIntent.id, paymentIntent.id) as
+    | { id: string; creator_id: string; tipper_id: string }
+    | undefined;
+
+  if (!tip) {
+    return;
+  }
+
+  await db
+    .prepare("UPDATE creator_tips SET status = 'failed', updated_at = ? WHERE id = ?")
+    .run(nowIso(), tip.id);
 
   await enqueueNotification({
-    userId: order.creator_id,
+    userId: tip.creator_id,
     type: "system",
-    title: "Odeme basarisiz",
-    message: `DM siparisi (${order.id}) odeme hatasi aldi.`,
+    title: "Bahsis odemesi basarisiz",
+    message: `Bahsis islemi (${tip.id}) odeme hatasi aldi.`,
     link: "/dashboard",
     channels: ["in_app", "email"],
   });
 
   await enqueueNotification({
-    userId: order.subscriber_id,
+    userId: tip.tipper_id,
     type: "system",
-    title: "Odeme basarisiz",
-    message: "Odemeniz tamamlanamadi, kart bilgilerinizi kontrol edip tekrar deneyin.",
-    link: "/dashboard",
+    title: "Bahsis odemesi basarisiz",
+    message: "Bahsis odemeniz tamamlanamadi, kart bilgilerinizi kontrol edip tekrar deneyin.",
+    link: "/creators",
     channels: ["in_app", "email"],
   });
 
   await writeAuditLog({
-    actorUserId: order.subscriber_id,
-    action: "payment.failed",
-    entityType: "dm_order",
-    entityId: order.id,
+    actorUserId: tip.tipper_id,
+    action: "payment.tip_failed",
+    entityType: "creator_tip",
+    entityId: tip.id,
     metadata: {
       paymentIntentId: paymentIntent.id,
       reason: paymentIntent.last_payment_error?.code ?? null,
@@ -800,14 +1346,131 @@ async function handleRefund(event: Stripe.Event): Promise<void> {
     | { id: string; creator_id: string; subscriber_id: string; product_id: string }
     | undefined;
 
-  if (!order) {
+  if (order) {
+    await db.prepare("UPDATE dm_orders SET status = 'refunded', updated_at = ? WHERE id = ?").run(
+      nowIso(),
+      order.id
+    );
+
+    await db.prepare(
+      `
+        UPDATE products
+        SET stock = stock + 1,
+            sold = CASE WHEN sold > 0 THEN sold - 1 ELSE 0 END,
+            updated_at = ?
+        WHERE id = ?
+      `
+    ).run(nowIso(), order.product_id);
+
+    await enqueueNotification({
+      userId: order.creator_id,
+      type: "system",
+      title: "Iade tamamlandi",
+      message: `DM siparisi (${order.id}) iade edildi.`,
+      link: "/dashboard",
+      channels: ["in_app", "email"],
+    });
+
+    await enqueueNotification({
+      userId: order.subscriber_id,
+      type: "system",
+      title: "Iadeniz tamamlandi",
+      message: `Siparisiniz (${order.id}) icin iade gerceklesti.`,
+      link: "/dashboard",
+      channels: ["in_app", "email"],
+    });
+
+    await writeAuditLog({
+      actorUserId: order.subscriber_id,
+      action: "payment.refunded",
+      entityType: "dm_order",
+      entityId: order.id,
+      metadata: {
+        paymentIntentId,
+        chargeId: charge.id,
+      },
+    });
+
     return;
   }
 
-  await db.prepare("UPDATE dm_orders SET status = 'refunded', updated_at = ? WHERE id = ?").run(
-    nowIso(),
-    order.id
-  );
+  const tip = await db
+    .prepare(
+      `
+        SELECT id, creator_id, tipper_id, amount_cents, status
+        FROM creator_tips
+        WHERE payment_ref = ?
+           OR payment_intent_id = ?
+      `
+    )
+    .get(paymentIntentId, paymentIntentId) as
+    | {
+        id: string;
+        creator_id: string;
+        tipper_id: string;
+        amount_cents: number;
+        status: CreatorTipStatus;
+      }
+    | undefined;
+
+  if (tip) {
+    if (tip.status !== "refunded") {
+      await db
+        .prepare("UPDATE creator_tips SET status = 'refunded', updated_at = ? WHERE id = ?")
+        .run(nowIso(), tip.id);
+
+      const amountLabel = formatCurrencyFromCents(tip.amount_cents);
+
+      await enqueueNotification({
+        userId: tip.creator_id,
+        type: "system",
+        title: "Bahsis iadesi tamamlandi",
+        message: `${amountLabel} tutarindaki bahsis iade edildi.`,
+        link: "/dashboard",
+        channels: ["in_app", "email"],
+      });
+
+      await enqueueNotification({
+        userId: tip.tipper_id,
+        type: "system",
+        title: "Bahsis iadeniz tamamlandi",
+        message: `${amountLabel} tutarindaki bahsisiniz icin iade gerceklesti.`,
+        link: "/dashboard",
+        channels: ["in_app", "email"],
+      });
+
+      await writeAuditLog({
+        actorUserId: tip.tipper_id,
+        action: "payment.tip_refunded",
+        entityType: "creator_tip",
+        entityId: tip.id,
+        metadata: {
+          paymentIntentId,
+          chargeId: charge.id,
+          amountCents: tip.amount_cents,
+        },
+      });
+    }
+
+    return;
+  }
+
+  const sale = await db
+    .prepare(
+      `
+        SELECT id, creator_id, buyer_id, product_id
+        FROM sales
+        WHERE payment_ref = ?
+          AND source = 'checkout'
+      `
+    )
+    .get(paymentIntentId) as
+    | { id: string; creator_id: string; buyer_id: string; product_id: string }
+    | undefined;
+
+  if (!sale) {
+    return;
+  }
 
   await db.prepare(
     `
@@ -817,34 +1480,35 @@ async function handleRefund(event: Stripe.Event): Promise<void> {
           updated_at = ?
       WHERE id = ?
     `
-  ).run(nowIso(), order.product_id);
+  ).run(nowIso(), sale.product_id);
 
   await enqueueNotification({
-    userId: order.creator_id,
+    userId: sale.creator_id,
     type: "system",
-    title: "Iade tamamlandi",
-    message: `DM siparisi (${order.id}) iade edildi.`,
+    title: "Satis iadesi tamamlandi",
+    message: `Checkout satisi (${sale.id}) iade edildi.`,
     link: "/dashboard",
     channels: ["in_app", "email"],
   });
 
   await enqueueNotification({
-    userId: order.subscriber_id,
+    userId: sale.buyer_id,
     type: "system",
     title: "Iadeniz tamamlandi",
-    message: `Siparisiniz (${order.id}) icin iade gerceklesti.`,
+    message: `Satin alma isleminiz (${sale.id}) icin iade gerceklesti.`,
     link: "/dashboard",
     channels: ["in_app", "email"],
   });
 
   await writeAuditLog({
-    actorUserId: order.subscriber_id,
+    actorUserId: sale.buyer_id,
     action: "payment.refunded",
-    entityType: "dm_order",
-    entityId: order.id,
+    entityType: "sale",
+    entityId: sale.id,
     metadata: {
       paymentIntentId,
       chargeId: charge.id,
+      source: "checkout",
     },
   });
 }

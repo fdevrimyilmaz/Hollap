@@ -5,7 +5,6 @@ import { createId } from "@/lib/server/db";
 import {
   authErrorResponse,
   createUser,
-  issueEmailVerificationTokenForEmail,
   issueEmailVerificationTokenForUserId,
 } from "@/lib/server/auth";
 import { writeAuditLog } from "@/lib/server/audit";
@@ -43,7 +42,15 @@ export async function POST(request: Request) {
     });
 
     if (!ipLimit.allowed) {
-      return NextResponse.json(SIGNUP_RESPONSE, { status: 202 });
+      return NextResponse.json(
+        { error: "Cok fazla kayit denemesi yapildi. Lutfen daha sonra tekrar deneyin." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(ipLimit.retryAfterSeconds),
+          },
+        }
+      );
     }
 
     const emailLimit = await consumeRateLimit({
@@ -54,29 +61,36 @@ export async function POST(request: Request) {
     });
 
     if (!emailLimit.allowed) {
-      return NextResponse.json(SIGNUP_RESPONSE, { status: 202 });
+      return NextResponse.json(
+        { error: "Bu e-posta icin cok fazla kayit denemesi yapildi. Lutfen daha sonra tekrar deneyin." },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(emailLimit.retryAfterSeconds),
+          },
+        }
+      );
     }
 
     const passwordHash = await hash(body.password, 10);
-    let createdUserId: string | null = null;
+    let createdUser: { id: string; name: string; email: string; role: UserRole };
 
     try {
-      const user = await createUser({
+      createdUser = await createUser({
         id: createId("usr"),
         name: body.name,
         email,
         passwordHash,
         role,
       });
-      createdUserId = user.id;
 
       await writeAuditLog({
-        actorUserId: user.id,
+        actorUserId: createdUser.id,
         action: "auth.signup_success",
         entityType: "user",
-        entityId: user.id,
+        entityId: createdUser.id,
         metadata: {
-          role: user.role,
+          role: createdUser.role,
         },
       });
     } catch (error) {
@@ -96,11 +110,17 @@ export async function POST(request: Request) {
         entityType: "user",
         metadata: { email },
       });
+
+      return NextResponse.json(
+        {
+          error:
+            "Bu e-posta adresi ile olusturulmus bir hesap zaten var. Giris yapabilir veya sifre sifirlama kullanabilirsiniz.",
+        },
+        { status: 409 }
+      );
     }
 
-    const verificationRequest = createdUserId
-      ? await issueEmailVerificationTokenForUserId(createdUserId, request)
-      : await issueEmailVerificationTokenForEmail(email, request);
+    const verificationRequest = await issueEmailVerificationTokenForUserId(createdUser.id, request);
 
     if (verificationRequest) {
       const baseUrl = process.env.APP_BASE_URL?.trim() || new URL(request.url).origin;

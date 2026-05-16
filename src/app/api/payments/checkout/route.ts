@@ -100,6 +100,8 @@ export async function POST(request: Request) {
       metadata: {
         flow: "checkout",
         userId: user.id,
+        buyerId: user.id,
+        subscriberId: user.id,
         productId: product.id,
         creatorId: product.creator_id,
       },

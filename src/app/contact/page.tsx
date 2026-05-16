@@ -14,13 +14,43 @@ export default function ContactPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const onSubmit = (event: FormEvent) => {
+  const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    showToast.success("Mesajin alindi", "En kisa surede sana donus yapacagiz");
-    setName("");
-    setEmail("");
-    setMessage("");
+
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          email,
+          message,
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        throw new Error(payload.error ?? "Mesaj gonderilemedi");
+      }
+
+      showToast.success("Mesajin alindi", "En kisa surede sana donus yapacagiz");
+      setName("");
+      setEmail("");
+      setMessage("");
+    } catch (error) {
+      showToast.error(
+        "Mesaj gonderilemedi",
+        error instanceof Error ? error.message : "Bilinmeyen hata"
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -43,11 +73,38 @@ export default function ContactPage() {
         <div className="container mx-auto px-4 grid lg:grid-cols-2 gap-6">
           <article className="glass-card rounded-2xl p-6">
             <h2 className="text-xl font-semibold text-white mb-3">Iletisim Kanallari</h2>
-            <div className="space-y-3 text-muted-foreground">
-              <p>Destek: <a className="text-orange-500 hover:text-orange-400" href="mailto:support@hollap.dev">support@hollap.dev</a></p>
-              <p>Partnerlik: <a className="text-orange-500 hover:text-orange-400" href="mailto:partners@hollap.dev">partners@hollap.dev</a></p>
-              <p>Topluluk: <Link className="text-orange-500 hover:text-orange-400" href="/community">Topluluk sayfasi</Link></p>
-            </div>
+            <p className="text-muted-foreground">
+              Talebinin turune gore asagidaki kanallardan bize ulasabilirsin.
+            </p>
+            <ul className="mt-4 space-y-4 text-muted-foreground">
+              <li>
+                <p className="text-white font-medium">Teknik Destek</p>
+                <a className="text-orange-500 hover:text-orange-400" href="mailto:support@hollap.com">
+                  support@hollap.com
+                </a>
+                <p className="text-sm text-muted-foreground/90">
+                  Hesap, odeme ve platform kullanimi ile ilgili talepler.
+                </p>
+              </li>
+              <li>
+                <p className="text-white font-medium">Is Birligi ve Partnerlik</p>
+                <a className="text-orange-500 hover:text-orange-400" href="mailto:partners@hollap.com">
+                  partners@hollap.com
+                </a>
+                <p className="text-sm text-muted-foreground/90">
+                  Marka is birlikleri, kurum paketleri ve stratejik ortakliklar.
+                </p>
+              </li>
+              <li>
+                <p className="text-white font-medium">Topluluk ve Duyurular</p>
+                <Link className="text-orange-500 hover:text-orange-400" href="/community">
+                  Topluluk sayfasi
+                </Link>
+                <p className="text-sm text-muted-foreground/90">
+                  Etkinlikler, guncellemeler ve topluluk iletisimleri.
+                </p>
+              </li>
+            </ul>
           </article>
 
           <article className="glass-card rounded-2xl p-6">
@@ -75,7 +132,12 @@ export default function ContactPage() {
                 className="bg-white/5 border-white/10 min-h-[120px]"
                 required
               />
-              <Button className="gradient-bg hover:opacity-90 text-white border-0">Gonder</Button>
+              <Button
+                disabled={isSubmitting}
+                className="gradient-bg hover:opacity-90 text-white border-0"
+              >
+                {isSubmitting ? "Gonderiliyor..." : "Gonder"}
+              </Button>
             </form>
           </article>
         </div>

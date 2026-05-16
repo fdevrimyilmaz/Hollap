@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     const user = await requireAuth(request);
     const body = await parseJsonBody(request, pushSubscriptionSchema);
 
-    savePushSubscription({
+    await savePushSubscription({
       userId: user.id,
       endpoint: body.endpoint,
       p256dh: body.keys.p256dh,

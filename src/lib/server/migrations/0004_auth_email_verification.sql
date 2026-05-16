@@ -19,6 +19,4 @@ CREATE INDEX IF NOT EXISTS idx_email_verification_user
 CREATE INDEX IF NOT EXISTS idx_email_verification_expires
   ON email_verification_tokens (expires_at);
 
-UPDATE users
-SET email_verified_at = COALESCE(email_verified_at, updated_at)
-WHERE id IN ('usr_creator_demo', 'usr_subscriber_demo');
+-- No implicit verification backfill: users should verify through token flow.

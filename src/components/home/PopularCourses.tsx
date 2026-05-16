@@ -1,13 +1,25 @@
-"use client";
-
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { courses, formatNumber } from "@/lib/data";
+import { listCatalogProducts } from "@/lib/server/catalog";
 
-export function PopularCourses() {
+function formatNumber(value: number): string {
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)}M`;
+  }
+
+  if (value >= 1_000) {
+    return `${(value / 1_000).toFixed(1)}K`;
+  }
+
+  return String(value);
+}
+
+export async function PopularCourses() {
+  const courses = await listCatalogProducts({ limit: 6 });
+
   return (
     <section className="py-24 bg-gradient-to-b from-transparent via-orange-500/5 to-transparent">
       <div className="container mx-auto px-4">
@@ -30,7 +42,7 @@ export function PopularCourses() {
                 <div className="relative aspect-video overflow-hidden">
                   <Image
                     src={course.thumbnail}
-                    alt={course.title}
+                    alt={course.name}
                     fill
                     sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
@@ -41,12 +53,6 @@ export function PopularCourses() {
                   </button>
                   <div className="absolute top-3 left-3 flex gap-2">
                     {course.isFeatured && <Badge className="gradient-bg border-0">One Cikan</Badge>}
-                    {course.isLocked && (
-                      <Badge className="bg-black/50 backdrop-blur-sm border-0">
-                        <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                        Premium
-                      </Badge>
-                    )}
                   </div>
                   <div className="absolute bottom-3 right-3">
                     <Badge className="bg-black/70 backdrop-blur-sm border-0">{course.duration}</Badge>
@@ -56,23 +62,28 @@ export function PopularCourses() {
                 <div className="p-5 flex-1 flex flex-col">
                   <div className="flex items-center justify-between mb-3">
                     <Badge variant="outline" className="text-xs border-white/10">{course.category}</Badge>
-                    <Badge variant="outline" className={`text-xs border-white/10 ${course.level === "Beginner" ? "text-green-500" : course.level === "Intermediate" ? "text-yellow-500" : "text-red-500"}`}>
+                    <Badge
+                      variant="outline"
+                      className={`text-xs border-white/10 ${
+                        course.level === "Beginner"
+                          ? "text-green-500"
+                          : course.level === "Intermediate"
+                            ? "text-yellow-500"
+                            : "text-red-500"
+                      }`}
+                    >
                       {course.level === "Beginner" ? "Baslangic" : course.level === "Intermediate" ? "Orta" : "Ileri"}
                     </Badge>
                   </div>
 
-                  <h3 className="text-lg font-semibold text-white group-hover:text-orange-500 transition-colors mb-2 line-clamp-2">{course.title}</h3>
+                  <h3 className="text-lg font-semibold text-white group-hover:text-orange-500 transition-colors mb-2 line-clamp-2">{course.name}</h3>
                   <p className="text-sm text-muted-foreground line-clamp-2 mb-4 flex-1">{course.description}</p>
 
                   <div className="flex items-center gap-3 mb-4">
                     <Avatar className="w-8 h-8">
-                      <AvatarImage src={course.creator.avatar} alt={course.creator.name} />
-                      <AvatarFallback>{course.creator.name[0]}</AvatarFallback>
+                      <AvatarFallback>{course.creatorName[0]}</AvatarFallback>
                     </Avatar>
-                    <span className="text-sm text-muted-foreground">{course.creator.name}</span>
-                    {course.creator.isVerified && (
-                      <svg className="w-4 h-4 text-orange-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
-                    )}
+                    <span className="text-sm text-muted-foreground">{course.creatorName}</span>
                   </div>
 
                   <div className="flex items-center justify-between pt-4 border-t border-white/5">
@@ -87,8 +98,7 @@ export function PopularCourses() {
                       </div>
                     </div>
                     <div className="text-right">
-                      {course.originalPrice && <span className="text-sm text-muted-foreground line-through mr-2">${course.originalPrice}</span>}
-                      <span className="text-lg font-bold gradient-text">${course.price}</span>
+                      <span className="text-lg font-bold gradient-text">${(course.amountCents / 100).toFixed(2)}</span>
                     </div>
                   </div>
                 </div>

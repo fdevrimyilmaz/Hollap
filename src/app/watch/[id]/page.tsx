@@ -1,13 +1,21 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { VideoPlayer } from "@/components/VideoPlayer";
-import { courses } from "@/lib/data";
+
+type WatchProduct = {
+  id: string;
+  name: string;
+  thumbnail: string;
+};
+
+const FALLBACK_THUMBNAIL =
+  "https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=600&h=400&fit=crop";
 
 const lessons = [
   { id: 1, title: "Kursa Hosgeldiniz", duration: "5:32", completed: true, isPreview: true },
@@ -24,26 +32,60 @@ const lessons = [
 
 export default function WatchPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const course = courses.find((c) => c.id === id) || courses[0];
+  const [product, setProduct] = useState<WatchProduct>({
+    id,
+    name: "Kurs yukleniyor",
+    thumbnail: FALLBACK_THUMBNAIL,
+  });
   const [currentLesson, setCurrentLesson] = useState(lessons[3]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  const completedCount = lessons.filter(l => l.completed).length;
+  useEffect(() => {
+    let ignore = false;
+    const productId = id.startsWith("prd-") ? id : `prd-${id}`;
+
+    const loadProduct = async () => {
+      try {
+        const response = await fetch(`/api/payments/products/${encodeURIComponent(productId)}`, {
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const payload = (await response.json()) as { product?: { id: string; name: string; thumbnail: string } };
+        if (!ignore && payload.product) {
+          setProduct({
+            id: payload.product.id,
+            name: payload.product.name,
+            thumbnail: payload.product.thumbnail,
+          });
+        }
+      } catch {
+        if (!ignore) {
+          setProduct((prev) => ({ ...prev, id: productId }));
+        }
+      }
+    };
+
+    void loadProduct();
+    return () => {
+      ignore = true;
+    };
+  }, [id]);
+
+  const completedCount = lessons.filter((lesson) => lesson.completed).length;
   const progressPercent = Math.round((completedCount / lessons.length) * 100);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Top Bar */}
       <header className="h-16 border-b border-white/5 bg-card flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-4">
-          <Link href={`/course/${id}`} className="flex items-center gap-2 text-muted-foreground hover:text-white transition-colors">
+          <Link href={`/course/${product.id}`} className="flex items-center gap-2 text-muted-foreground hover:text-white transition-colors">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
             <span className="hidden sm:inline">Kursa Don</span>
           </Link>
           <div className="h-6 w-px bg-white/10 hidden sm:block" />
-          <h1 className="text-white font-medium truncate max-w-md hidden sm:block">{course.title}</h1>
+          <h1 className="text-white font-medium truncate max-w-md hidden sm:block">{product.name}</h1>
         </div>
 
         <div className="flex items-center gap-4">
@@ -66,13 +108,11 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Main Video Area */}
         <main className="flex-1 flex flex-col overflow-hidden">
-          {/* Video Player */}
           <div className="bg-black">
             <div className="max-w-6xl mx-auto">
               <VideoPlayer
-                thumbnail={course.thumbnail}
+                thumbnail={product.thumbnail}
                 title={currentLesson.title}
                 duration={currentLesson.duration}
                 isLocked={false}
@@ -80,7 +120,6 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
             </div>
           </div>
 
-          {/* Lesson Info */}
           <div className="p-6 border-b border-white/5">
             <div className="max-w-4xl">
               <div className="flex items-center gap-3 mb-2">
@@ -98,9 +137,6 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
                   disabled={currentLesson.id === 1}
                   onClick={() => setCurrentLesson(lessons[currentLesson.id - 2])}
                 >
-                  <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
                   Onceki
                 </Button>
                 <Button
@@ -109,57 +145,21 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
                   onClick={() => setCurrentLesson(lessons[currentLesson.id])}
                 >
                   Sonraki
-                  <svg className="w-4 h-4 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </Button>
-                <Button variant="outline" className="border-white/10 ml-auto">
-                  <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Tamamlandi Olarak Isaretle
                 </Button>
               </div>
             </div>
           </div>
 
-          {/* Lesson Description */}
           <div className="flex-1 overflow-auto p-6">
             <div className="max-w-4xl">
               <h3 className="font-semibold text-white mb-3">Bu Derste</h3>
-              <p className="text-muted-foreground mb-6">
-                Bu derste {currentLesson.title.toLowerCase()} konusunu detayli bir sekilde inceleyecegiz.
-                Pratik ornekler ve canli kodlama ile konuyu pekistirecegiz.
+              <p className="text-muted-foreground">
+                Bu derste {currentLesson.title.toLowerCase()} konusunu detayli sekilde isleyecegiz.
               </p>
-
-              <h3 className="font-semibold text-white mb-3">Kaynaklar</h3>
-              <div className="space-y-2">
-                <Link
-                  href={`/course/${id}`}
-                  className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
-                >
-                  <svg className="w-5 h-5 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <span className="text-white">Ders Notlari (PDF)</span>
-                </Link>
-                <a
-                  href="https://github.com/vercel/next.js"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
-                >
-                  <svg className="w-5 h-5 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                  </svg>
-                  <span className="text-white">Kaynak Kodlar (GitHub)</span>
-                </a>
-              </div>
             </div>
           </div>
         </main>
 
-        {/* Sidebar - Lesson List */}
         {sidebarOpen && (
           <aside className="w-80 border-l border-white/5 bg-card shrink-0 hidden lg:block">
             <div className="p-4 border-b border-white/5">
@@ -174,9 +174,7 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
                     key={lesson.id}
                     onClick={() => setCurrentLesson(lesson)}
                     className={`w-full text-left p-3 rounded-xl mb-1 transition-all ${
-                      currentLesson.id === lesson.id
-                        ? "bg-orange-500/20 border border-orange-500/50"
-                        : "hover:bg-white/5"
+                      currentLesson.id === lesson.id ? "bg-orange-500/20 border border-orange-500/50" : "hover:bg-white/5"
                     }`}
                   >
                     <div className="flex items-start gap-3">
@@ -184,16 +182,10 @@ export default function WatchPage({ params }: { params: Promise<{ id: string }> 
                         lesson.completed
                           ? "bg-green-500/20 text-green-500"
                           : currentLesson.id === lesson.id
-                          ? "gradient-bg text-white"
-                          : "bg-white/5 text-muted-foreground"
+                            ? "gradient-bg text-white"
+                            : "bg-white/5 text-muted-foreground"
                       }`}>
-                        {lesson.completed ? (
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        ) : (
-                          <span className="text-sm">{lesson.id}</span>
-                        )}
+                        {lesson.completed ? "x" : <span className="text-sm">{lesson.id}</span>}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className={`text-sm font-medium truncate ${
