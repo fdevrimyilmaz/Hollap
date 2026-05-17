@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs, readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { Pool } from "pg";
@@ -6,6 +6,71 @@ import { Pool } from "pg";
 const MIGRATIONS_DIR = path.join(process.cwd(), "src", "lib", "server", "migrations");
 const DEFAULT_DATABASE_URL = "postgres://postgres:postgres@127.0.0.1:5432/hollap";
 const OPTIONAL_LOCAL_MODE = process.argv.includes("--optional-local");
+
+function parseDotEnv(content) {
+  const parsed = {};
+  const lines = content.split(/\r?\n/);
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+
+    const separatorIndex = line.indexOf("=");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    let value = line.slice(separatorIndex + 1).trim();
+
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    parsed[key] = value;
+  }
+
+  return parsed;
+}
+
+function readEnvFromFile(filePath) {
+  const absolutePath = path.resolve(filePath);
+  if (!existsSync(absolutePath)) {
+    return null;
+  }
+
+  const content = readFileSync(absolutePath, "utf8");
+  return { parsed: parseDotEnv(content), absolutePath };
+}
+
+function applyEnvFileFallback() {
+  const candidates = [".env.local", ".env"];
+
+  for (const candidate of candidates) {
+    const envFile = readEnvFromFile(candidate);
+    if (!envFile) {
+      continue;
+    }
+
+    for (const [key, value] of Object.entries(envFile.parsed)) {
+      if (!process.env[key]?.trim()) {
+        process.env[key] = value;
+      }
+    }
+
+    if (!process.env.CI) {
+      console.log(`Loaded environment fallback from ${envFile.absolutePath}`);
+    }
+    return;
+  }
+}
+
+applyEnvFileFallback();
 
 function resolveDeployTarget() {
   const netlifyContext = process.env.CONTEXT?.trim().toLowerCase();

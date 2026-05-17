@@ -78,6 +78,19 @@ function readEnvFromFile(filePath) {
   return parseDotEnv(content);
 }
 
+function readFallbackEnvFiles() {
+  const candidates = [".env.local", ".env"];
+
+  for (const candidate of candidates) {
+    const env = readEnvFromFile(candidate);
+    if (env) {
+      return { env, sourceLabel: path.resolve(candidate) };
+    }
+  }
+
+  return null;
+}
+
 function isPlaceholder(value) {
   if (!value) {
     return true;
@@ -133,8 +146,13 @@ function hasAny(env, keys) {
 function main() {
   const { file, mode } = parseArgs(process.argv);
   const envFromFile = file ? readEnvFromFile(file) : null;
-  const source = envFromFile ?? process.env;
-  const sourceLabel = envFromFile ? path.resolve(file) : "process.env";
+  const fallback = !file ? readFallbackEnvFiles() : null;
+  const source = envFromFile ?? (fallback ? { ...fallback.env, ...process.env } : process.env);
+  const sourceLabel = envFromFile
+    ? path.resolve(file)
+    : fallback
+      ? `process.env (+ fallback ${fallback.sourceLabel})`
+      : "process.env";
 
   const errors = [];
   const warnings = [];
