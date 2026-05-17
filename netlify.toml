@@ -2,7 +2,7 @@
   remote_images = ["https://source.unsplash.com/.*", "https://images.unsplash.com/.*", "https://ext.same-assets.com/.*", "https://ugc.same-assets.com/.*"]
 
 [build]
-  command = "npm ci && npm run env:check:deploy && npm run ci && npm run build"
+  command = "npm ci && npm run env:check:deploy && npm run build"
 
 [build.environment]
   NODE_VERSION = "20"
