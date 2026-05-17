@@ -1,5 +1,4 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import fs from "node:fs";
 import { promises as fsAsync } from "node:fs";
 import path from "node:path";
 import {
@@ -9,14 +8,43 @@ import {
   types as pgTypes,
 } from "pg";
 
-const STORAGE_DIR = path.join(process.cwd(), "storage", "private");
 const MIGRATIONS_DIR = path.join(process.cwd(), "src", "lib", "server", "migrations");
 const DEFAULT_DATABASE_URL = "postgres://postgres:postgres@127.0.0.1:5432/hollap";
+const SERVERLESS_LOCAL_STORAGE_DIR = "/tmp/hollap/storage/private";
+let hasWarnedEphemeralLocalStorage = false;
 
 // Parse bigint (COUNT(*), etc.) as number to preserve previous SQLite behavior.
 pgTypes.setTypeParser(20, (value) => Number(value));
 
-fs.mkdirSync(STORAGE_DIR, { recursive: true });
+function isServerlessRuntime(): boolean {
+  return Boolean(
+    process.env.NETLIFY ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      process.env.VERCEL ||
+      process.env.CLOUDFLARE_WORKER
+  );
+}
+
+function shouldUseServerlessLocalStorage(): boolean {
+  const driver = (process.env.OBJECT_STORAGE_DRIVER ?? "local").trim().toLowerCase();
+  return driver === "local" && isServerlessRuntime();
+}
+
+function resolveStorageDir(): string {
+  if (shouldUseServerlessLocalStorage()) {
+    if (process.env.NODE_ENV === "production" && !hasWarnedEphemeralLocalStorage) {
+      hasWarnedEphemeralLocalStorage = true;
+      console.warn(
+        "[storage] OBJECT_STORAGE_DRIVER=local on a serverless runtime. Using ephemeral /tmp storage; files are not persistent across invocations."
+      );
+    }
+    return SERVERLESS_LOCAL_STORAGE_DIR;
+  }
+
+  return path.join(process.cwd(), "storage", "private");
+}
+
+const STORAGE_DIR = resolveStorageDir();
 
 declare global {
   var __creatorhubDbPool: Pool | undefined;
@@ -74,15 +102,6 @@ function resolveDatabaseUrl(): string {
   }
 
   return DEFAULT_DATABASE_URL;
-}
-
-function isServerlessRuntime(): boolean {
-  return Boolean(
-    process.env.NETLIFY ||
-      process.env.AWS_LAMBDA_FUNCTION_NAME ||
-      process.env.VERCEL ||
-      process.env.CLOUDFLARE_WORKER
-  );
 }
 
 function resolvePoolSize(): number {
