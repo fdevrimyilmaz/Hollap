@@ -8,6 +8,8 @@ describeDb("webhook retry", () => {
   let nowIso: (typeof import("@/lib/server/db"))["nowIso"];
   let retryFailedStripeWebhooks: (typeof import("@/lib/server/payments"))["retryFailedStripeWebhooks"];
 
+  const eventId = "evt_retry_test_1";
+
   beforeAll(async () => {
     delete (globalThis as { __creatorhubDbPool?: unknown }).__creatorhubDbPool;
     delete (globalThis as { __creatorhubDbInitPromise?: unknown }).__creatorhubDbInitPromise;
@@ -15,14 +17,20 @@ describeDb("webhook retry", () => {
 
     ({ db, createId, nowIso } = await import("@/lib/server/db"));
     ({ retryFailedStripeWebhooks } = await import("@/lib/server/payments"));
+
+    await db
+      .prepare("DELETE FROM webhook_events WHERE event_id = ?")
+      .run(eventId);
   });
 
   afterAll(async () => {
+    await db
+      .prepare("DELETE FROM webhook_events WHERE event_id = ?")
+      .run(eventId);
     await db.close();
   });
 
   it("reprocesses failed stripe webhook events", async () => {
-    const eventId = "evt_retry_1";
     const event = {
       id: eventId,
       type: "payment_intent.payment_failed",

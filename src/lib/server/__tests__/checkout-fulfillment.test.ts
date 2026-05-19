@@ -46,10 +46,26 @@ describeDb("checkout fulfillment", () => {
       `
     ).run(buyerId, "Checkout Buyer", "checkout.buyer@test.dev", passwordHash, now, now, now);
 
+    await db
+      .prepare(
+        "DELETE FROM webhook_events WHERE event_id IN ('evt_checkout_fulfillment_1', 'evt_tip_fulfillment_1')"
+      )
+      .run();
     await db.prepare("DELETE FROM sales WHERE product_id = ?").run(productId);
     await db.prepare("DELETE FROM products WHERE id = ?").run(productId);
     await db
       .prepare("DELETE FROM creator_tips WHERE creator_id = ? OR tipper_id = ?")
+      .run(creatorId, buyerId);
+    await db
+      .prepare(
+        "DELETE FROM notification_deliveries WHERE user_id IN (?, ?) OR notification_id IN (SELECT id FROM notifications WHERE user_id IN (?, ?))"
+      )
+      .run(creatorId, buyerId, creatorId, buyerId);
+    await db
+      .prepare("DELETE FROM notifications WHERE user_id IN (?, ?)")
+      .run(creatorId, buyerId);
+    await db
+      .prepare("DELETE FROM audit_logs WHERE actor_user_id IN (?, ?)")
       .run(creatorId, buyerId);
 
     await db.prepare(
@@ -66,6 +82,22 @@ describeDb("checkout fulfillment", () => {
       .run(creatorId, buyerId);
     await db.prepare("DELETE FROM sales WHERE product_id = ?").run(productId);
     await db.prepare("DELETE FROM products WHERE id = ?").run(productId);
+    await db
+      .prepare(
+        "DELETE FROM notification_deliveries WHERE user_id IN (?, ?) OR notification_id IN (SELECT id FROM notifications WHERE user_id IN (?, ?))"
+      )
+      .run(creatorId, buyerId, creatorId, buyerId);
+    await db
+      .prepare("DELETE FROM notifications WHERE user_id IN (?, ?)")
+      .run(creatorId, buyerId);
+    await db
+      .prepare("DELETE FROM audit_logs WHERE actor_user_id IN (?, ?)")
+      .run(creatorId, buyerId);
+    await db
+      .prepare(
+        "DELETE FROM webhook_events WHERE event_id IN ('evt_checkout_fulfillment_1', 'evt_tip_fulfillment_1')"
+      )
+      .run();
     await db.prepare("DELETE FROM users WHERE id IN (?, ?)").run(creatorId, buyerId);
     await db.close();
   });
