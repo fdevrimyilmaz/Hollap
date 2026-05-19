@@ -1,3 +1,33 @@
+# Default: normalize all text to LF in the repo, regardless of OS.
 * text=auto eol=lf
+
+# Windows shell scripts must stay CRLF.
 *.bat text eol=crlf
 *.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary assets — never touch line endings.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.svg text
+*.pdf binary
+*.zip binary
+*.gz binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.mp4 binary
+*.webm binary
+*.mp3 binary
+*.wav binary
+
+# Lockfiles: text but never line-merge.
+package-lock.json text -diff
+*.lock text -diff
