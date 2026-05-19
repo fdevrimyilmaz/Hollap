@@ -1,33 +1,40 @@
-﻿import { InfoPage } from "@/components/page/InfoPage";
+import type { Metadata } from "next";
+import { InfoPage } from "@/components/page/InfoPage";
+
+export const metadata: Metadata = {
+  title: "Yaratıcı Ol",
+  description:
+    "Bilgini ürüne çevir, takipçini gelire dönüştür. Yaratıcı paneliyle içerik yayınla, abonelik katmanları kur.",
+};
 
 export default function BecomeCreatorPage() {
   return (
     <InfoPage
-      badge="Yaratici Programi"
-      title="Bilgini urune cevir, takipcini gelire donustur"
-      description="Yaratici paneliyle iceriklerini yayinla, abonelik katmanlari olustur ve toplulugunla dogrudan etkilesim kur."
-      primaryCta={{ label: "Hemen Kayit Ol", href: "/signup" }}
-      secondaryCta={{ label: "Nasil Calisir", href: "/how-it-works" }}
+      badge="Yaratıcı Programı"
+      title="Bilgini ürüne çevir, takipçini gelire dönüştür"
+      description="Yaratıcı paneliyle içeriklerini yayınla, abonelik katmanları oluştur ve topluluğunla doğrudan etkileşim kur."
+      primaryCta={{ label: "Hemen Kayıt Ol", href: "/signup" }}
+      secondaryCta={{ label: "Nasıl Çalışır", href: "/how-it-works" }}
       sections={[
         {
-          title: "Hizli Baslangic",
-          description: "Dakikalar icinde profilini tamamlayip ilk icerigini yayinlayabilirsin.",
-          points: ["Profil ve branding", "Kategori secimi", "Ilk kurs kurulumu"],
+          title: "Hızlı Başlangıç",
+          description: "Dakikalar içinde profilini tamamlayıp ilk içeriğini yayınlayabilirsin.",
+          points: ["Profil ve marka tasarımı", "Kategori seçimi", "İlk kurs kurulumu"],
         },
         {
           title: "Gelir Modelleri",
-          description: "Tek tip modele bagli kalmadan farkli urunlerle gelirini cesitlendir.",
-          points: ["Kurs satisi", "Uyelik paketleri", "PPV ve DM satis"],
+          description: "Tek tip modele bağlı kalmadan farklı ürünlerle gelirini çeşitlendir.",
+          points: ["Kurs satışı", "Üyelik paketleri", "PPV ve DM satışı"],
         },
         {
           title: "Topluluk ve Sadakat",
-          description: "Abonelerine dosya, canli yayin ve ozel icerik sunarak bagliligi artir.",
-          points: ["Subscriber-only icerik", "Canli yayin", "Bildirim ve duyuru"],
+          description: "Abonelerine dosya, canlı yayın ve özel içerik sunarak bağlılığı artır.",
+          points: ["Aboneye özel içerik", "Canlı yayın", "Bildirim ve duyuru"],
         },
         {
           title: "Operasyon",
-          description: "Odeme ve icerik operasyonunu merkezi panelden yonetebilirsin.",
-          points: ["Dashboard", "Dosya dagitimi", "Siparis ve urun yonetimi"],
+          description: "Ödeme ve içerik operasyonunu merkezi panelden yönetebilirsin.",
+          points: ["Yönetim paneli", "Dosya dağıtımı", "Sipariş ve ürün yönetimi"],
         },
       ]}
     />

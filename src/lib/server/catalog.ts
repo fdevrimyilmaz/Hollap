@@ -9,7 +9,10 @@ type CatalogProductRow = {
   stock: number;
   sold: number;
   is_active: number;
+  thumbnail_url: string | null;
   created_at: string;
+  review_count?: number | null;
+  review_average?: number | null;
 };
 
 export type CatalogProduct = {
@@ -39,6 +42,8 @@ type CatalogCreatorRow = {
   name: string;
   created_at: string;
   email_verified_at: string | null;
+  avatar_url: string | null;
+  cover_url: string | null;
   product_count: number;
   total_sold: number;
   average_product_price_cents: number;
@@ -171,7 +176,7 @@ function transliterate(input: string): string {
     .join("");
 }
 
-function toSlug(input: string): string {
+export function toSlug(input: string): string {
   return transliterate(input)
     .toLowerCase()
     .normalize("NFD")
@@ -185,7 +190,7 @@ function toCategoryId(name: string): string {
   return toSlug(name) || "marketplace";
 }
 
-function createCreatorUsername(name: string, creatorId: string): string {
+export function createCreatorUsername(name: string, creatorId: string): string {
   const base = toSlug(name);
   const suffix = toSlug(creatorId).replace(/[^a-z0-9]/g, "").slice(-6);
 
@@ -222,16 +227,16 @@ function mapRowToCatalogCreator(row: CatalogCreatorRow): CatalogCreator {
   const subscriptionPriceCents = Math.max(499, Math.round(averageProductPrice * 0.35));
   const bio =
     row.product_count > 0
-      ? `${row.name}, Hollap marketplace uzerinde ${row.product_count} aktif urun yayinliyor.`
-      : `${row.name}, Hollap uzerinde ureten dogrulanmis bir yaratici.`;
+      ? `${row.name}, Hollap üzerinde ${row.product_count} aktif ürün yayınlıyor.`
+      : `${row.name}, Hollap'ta üreten doğrulanmış bir yaratıcı.`;
 
   return {
     id: row.id,
     name: row.name,
     username,
     profilePath: `/creator/${username}`,
-    avatar: buildCreatorAvatar(row.name),
-    coverImage: pickCreatorCover(row.id),
+    avatar: row.avatar_url ?? buildCreatorAvatar(row.name),
+    coverImage: row.cover_url ?? pickCreatorCover(row.id),
     bio,
     category: "Marketplace",
     followers,
@@ -251,6 +256,13 @@ function mapRowToCatalogProduct(row: CatalogProductRow): CatalogProduct {
     row.sold >= 50 ? "Advanced" : row.sold >= 15 ? "Intermediate" : "Beginner";
   const creatorSlug = createCreatorUsername(row.creator_name, row.creator_id);
 
+  // Real review average if there are reviews; otherwise estimate from sales velocity.
+  const reviewCount = row.review_count ?? 0;
+  const reviewAverage = row.review_average ?? 0;
+  const rating = reviewCount > 0
+    ? Number(reviewAverage.toFixed(2))
+    : Math.min(5, Number((4.5 + Math.min(0.45, row.sold / 500)).toFixed(2)));
+
   return {
     id: row.id,
     creatorId: row.creator_id,
@@ -259,17 +271,17 @@ function mapRowToCatalogProduct(row: CatalogProductRow): CatalogProduct {
     creatorProfilePath: `/creator/${creatorSlug}`,
     creatorAvatar: buildCreatorAvatar(row.creator_name),
     name: row.name,
-    description: `${row.name} urunu Hollap marketplace uzerinden satin alinabilir.`,
+    description: `${row.name} — Hollap üzerinden hemen satın alabilirsin.`,
     amountCents: row.price_cents,
     stock: row.stock,
     sold: row.sold,
     category: "Marketplace",
     level,
     duration: `${Math.max(4, Math.min(48, Math.round(row.price_cents / 180)))} saat`,
-    rating: Math.min(5, Number((4.5 + Math.min(0.45, row.sold / 500)).toFixed(2))),
+    rating,
     students: Math.max(1, row.sold * 3 + 25),
     isFeatured: row.sold >= 10,
-    thumbnail: pickThumbnail(row.id),
+    thumbnail: row.thumbnail_url ?? pickThumbnail(row.id),
     createdAt: row.created_at,
   };
 }
@@ -330,9 +342,17 @@ export async function listCatalogProducts(params?: {
             p.stock,
             p.sold,
             p.is_active,
-            p.created_at
+            p.thumbnail_url,
+            p.created_at,
+            COALESCE(r.review_count, 0)::int AS review_count,
+            COALESCE(r.review_average, 0)::float AS review_average
           FROM products p
           JOIN users u ON u.id = p.creator_id
+          LEFT JOIN (
+            SELECT product_id, COUNT(*) AS review_count, AVG(rating) AS review_average
+            FROM course_reviews
+            GROUP BY product_id
+          ) r ON r.product_id = p.id
           ${whereClause}
           ORDER BY p.created_at DESC
           ${limitClause}
@@ -368,9 +388,17 @@ export async function getCatalogProductById(
             p.stock,
             p.sold,
             p.is_active,
-            p.created_at
+            p.thumbnail_url,
+            p.created_at,
+            COALESCE(r.review_count, 0)::int AS review_count,
+            COALESCE(r.review_average, 0)::float AS review_average
           FROM products p
           JOIN users u ON u.id = p.creator_id
+          LEFT JOIN (
+            SELECT product_id, COUNT(*) AS review_count, AVG(rating) AS review_average
+            FROM course_reviews
+            GROUP BY product_id
+          ) r ON r.product_id = p.id
           WHERE p.id = ?
         `
       )
@@ -433,6 +461,8 @@ export async function listCatalogCreators(params?: {
             u.name,
             u.created_at,
             u.email_verified_at,
+            u.avatar_url,
+            u.cover_url,
             COALESCE(prod.product_count, 0) as product_count,
             COALESCE(prod.total_sold, 0) as total_sold,
             COALESCE(prod.average_product_price_cents, 0) as average_product_price_cents,
@@ -463,7 +493,9 @@ export async function listCatalogCreators(params?: {
               creator_id,
               COUNT(*) as active_subscribers
             FROM subscriptions
-            WHERE stripe_status IN ('active', 'trialing')
+            WHERE active = 1
+              AND LOWER(COALESCE(stripe_status, '')) IN ('active', 'trialing')
+              AND (current_period_end IS NULL OR current_period_end::timestamptz > NOW())
             GROUP BY creator_id
           ) subs ON subs.creator_id = u.id
           LEFT JOIN (

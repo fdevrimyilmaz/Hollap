@@ -755,6 +755,78 @@ async function handleMarketplaceCheckoutSessionCompleted(
   });
 }
 
+async function handleSubscriptionCheckoutSessionCompleted(
+  session: Stripe.Checkout.Session
+): Promise<void> {
+  const metadata = session.metadata ?? null;
+  const subscriptionId = readMetadataValue(metadata, "subscriptionId");
+  const creatorId = readMetadataValue(metadata, "creatorId");
+  const subscriberId = readMetadataValue(metadata, "subscriberId");
+  const tier = readMetadataValue(metadata, "tier");
+  const periodDays = Number(readMetadataValue(metadata, "periodDays") ?? 30);
+
+  if (!subscriptionId || !creatorId || !subscriberId || !tier) {
+    await writeAuditLog({
+      action: "subscription.checkout_missing_metadata",
+      entityType: "checkout_session",
+      entityId: session.id,
+      metadata: {
+        metadataKeys: metadata ? Object.keys(metadata).sort() : [],
+      },
+    });
+    return;
+  }
+
+  if (session.payment_status !== "paid") {
+    return;
+  }
+
+  const ts = nowIso();
+  const periodEnd = new Date(
+    Date.now() + Math.max(1, periodDays) * 24 * 60 * 60 * 1000
+  ).toISOString();
+
+  await db
+    .prepare(
+      `UPDATE subscriptions
+       SET active = 1,
+           stripe_status = 'active',
+           tier = ?,
+           current_period_end = ?,
+           updated_at = ?
+       WHERE id = ?`
+    )
+    .run(tier, periodEnd, ts, subscriptionId);
+
+  const subscriber = (await db
+    .prepare("SELECT name FROM users WHERE id = ?")
+    .get(subscriberId)) as { name: string } | undefined;
+
+  if (subscriber) {
+    await enqueueNotification({
+      userId: creatorId,
+      type: "subscriber",
+      title: "Yeni abone",
+      message: `${subscriber.name} sana ${tier} aboneliği aldı.`,
+      link: "/dashboard/subscribers",
+      channels: ["in_app", "push"],
+    });
+  }
+
+  await writeAuditLog({
+    actorUserId: subscriberId,
+    action: "subscription.activated_by_checkout",
+    entityType: "subscription",
+    entityId: subscriptionId,
+    metadata: {
+      checkoutSessionId: session.id,
+      tier,
+      periodEnd,
+      amountCents: session.amount_total ?? null,
+    },
+  });
+}
+
 async function handleTipCheckoutSessionCompleted(
   session: Stripe.Checkout.Session
 ): Promise<void> {
@@ -983,6 +1055,11 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
 
     if (flow === "checkout") {
       await handleMarketplaceCheckoutSessionCompleted(session);
+      return;
+    }
+
+    if (flow === "subscription") {
+      await handleSubscriptionCheckoutSessionCompleted(session);
       return;
     }
 

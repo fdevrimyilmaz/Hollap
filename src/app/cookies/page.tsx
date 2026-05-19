@@ -1,28 +1,34 @@
-﻿import { InfoPage } from "@/components/page/InfoPage";
+import type { Metadata } from "next";
+import { InfoPage } from "@/components/page/InfoPage";
+
+export const metadata: Metadata = {
+  title: "Çerez Politikası",
+  description: "Daha iyi deneyim, güvenlik ve performans için kullandığımız çerezler hakkında detaylı bilgi.",
+};
 
 export default function CookiesPage() {
   return (
     <InfoPage
-      badge="Cerez Politikasi"
-      title="Cerez kullanimi hakkinda bilgilendirme"
-      description="Daha iyi deneyim, guvenlik ve performans icin cerezlerden yararlaniyoruz."
-      secondaryCta={{ label: "Gizlilik Politikasi", href: "/privacy" }}
+      badge="Çerez Politikası"
+      title="Çerez kullanımı hakkında bilgilendirme"
+      description="Daha iyi deneyim, güvenlik ve performans için çerezlerden yararlanıyoruz. Aşağıda hangi çerezi neden kullandığımızı açıkladık."
+      secondaryCta={{ label: "Gizlilik Politikası", href: "/privacy" }}
       sections={[
         {
-          title: "Zorunlu Cerezler",
-          description: "Oturum, guvenlik ve temel platform islevleri icin kullanilir.",
+          title: "Zorunlu Çerezler",
+          description: "Oturum, güvenlik ve temel platform işlevleri için kullanılır.",
         },
         {
-          title: "Analitik Cerezler",
-          description: "Sayfa performansi ve kullanim trendlerini analiz etmek icin kullanilir.",
+          title: "Analitik Çerezler",
+          description: "Sayfa performansı ve kullanım trendlerini analiz etmek için kullanılır.",
         },
         {
-          title: "Tercih Cerezleri",
-          description: "Dil, gorunum ve benzeri kullanici tercihlerini hatirlamaya yardimci olur.",
+          title: "Tercih Çerezleri",
+          description: "Dil, görünüm ve benzeri kullanıcı tercihlerini hatırlamaya yardımcı olur.",
         },
         {
-          title: "Yonetim",
-          description: "Tarayici ayarlarindan cerezleri silebilir veya kisitlayabilirsin.",
+          title: "Yönetim",
+          description: "Tarayıcı ayarlarından çerezleri silebilir veya kısıtlayabilirsin.",
         },
       ]}
     />

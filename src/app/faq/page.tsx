@@ -1,29 +1,39 @@
-﻿import { InfoPage } from "@/components/page/InfoPage";
+import type { Metadata } from "next";
+import { InfoPage } from "@/components/page/InfoPage";
+
+export const metadata: Metadata = {
+  title: "Sıkça Sorulan Sorular",
+  description: "Hesap, ödeme, içerik yayını ve topluluk süreciyle ilgili en çok sorulan soruların yanıtları.",
+};
 
 export default function FaqPage() {
   return (
     <InfoPage
       badge="SSS"
-      title="Sikca Sorulan Sorular"
-      description="Hesap, odeme, icerik yayini ve topluluk sureciyle ilgili en cok sorulan sorulari burada bulabilirsin."
-      primaryCta={{ label: "Yardim Merkezi", href: "/help" }}
-      secondaryCta={{ label: "Iletisim", href: "/contact" }}
+      title="Sıkça sorulan sorular"
+      description="Hesap, ödeme, içerik yayını ve topluluk süreciyle ilgili en çok sorulan soruların yanıtlarını burada bulabilirsin."
+      primaryCta={{ label: "Yardım Merkezi", href: "/help" }}
+      secondaryCta={{ label: "İletişim", href: "/contact" }}
       sections={[
         {
-          title: "Yaratici olarak nasil baslarim?",
-          description: "Kayit olduktan sonra profilini tamamlayip ilk kursunu veya abonelik planini panelden olusturabilirsin.",
+          title: "Yaratıcı olarak nasıl başlarım?",
+          description:
+            "Kayıt olduktan sonra profilini tamamlayıp ilk kursunu veya abonelik planını panelden oluşturabilirsin.",
         },
         {
-          title: "Odeme ne kadar surer?",
-          description: "Planina gore odeme periyodu degisir; detaylar fiyatlandirma sayfasinda aciklanir.",
+          title: "Ödeme ne kadar sürer?",
+          description:
+            "Planına göre ödeme periyodu değişir; detaylar fiyatlandırma sayfasında açıklanır.",
         },
         {
-          title: "Iade politikaniz nedir?",
-          description: "Kurs odemeleri icin belirli bir sure icinde iade talebi olusturabilirsin.",
+          title: "İade politikanız nedir?",
+          description:
+            "Kurs ödemeleri için belirli bir süre içinde iade talebi oluşturabilirsin.",
         },
         {
-          title: "Canli yayin nasil acilir?",
-          description: "Dashboard uzerinden canli yayin oturumu olusturup tek tusla yayina gecebilirsin.",
+          title: "Canlı yayın nasıl açılır?",
+          description:
+            "Yönetim paneli üzerinden canlı yayın oturumu oluşturup tek tuşla yayına geçebilirsin.",
         },
       ]}
     />

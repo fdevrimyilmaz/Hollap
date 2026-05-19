@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { issuePasswordResetToken } from "@/lib/server/auth";
 import { writeAuditLog } from "@/lib/server/audit";
-import { sendPasswordResetEmail } from "@/lib/server/auth-mail";
+import { isEmailConfigured, sendPasswordResetEmail } from "@/lib/server/auth-mail";
 import { logInfo } from "@/lib/server/logger";
 import { assertCsrf, consumeRateLimit, getClientIp } from "@/lib/server/security";
 import { parseJsonBody } from "@/lib/server/validation";
@@ -11,10 +11,15 @@ const forgotPasswordSchema = z.object({
   email: z.string().trim().email(),
 });
 
-const GENERIC_RESPONSE = {
-  ok: true,
-  message: "Eger bu e-posta sistemde kayitliysa sifirlama baglantisi gonderildi.",
-};
+function buildGenericResponse() {
+  return {
+    ok: true,
+    emailDelivery: isEmailConfigured() ? ("sent" as const) : ("not_configured" as const),
+    message: isEmailConfigured()
+      ? "Eger bu e-posta sistemde kayitliysa sifirlama baglantisi gonderildi."
+      : "E-posta servisi yapilandirilmadigi icin sifirlama baglantisi sunucu loglarinda. Yoneticiye danis.",
+  };
+}
 
 export async function POST(request: Request) {
   try {
@@ -31,7 +36,7 @@ export async function POST(request: Request) {
     });
 
     if (!limiter.allowed) {
-      return NextResponse.json(GENERIC_RESPONSE, {
+      return NextResponse.json(buildGenericResponse(), {
         status: 202,
       });
     }
@@ -44,7 +49,7 @@ export async function POST(request: Request) {
     });
 
     if (!emailLimiter.allowed) {
-      return NextResponse.json(GENERIC_RESPONSE, {
+      return NextResponse.json(buildGenericResponse(), {
         status: 202,
       });
     }
@@ -74,8 +79,8 @@ export async function POST(request: Request) {
       });
     }
 
-    return NextResponse.json(GENERIC_RESPONSE, { status: 202 });
+    return NextResponse.json(buildGenericResponse(), { status: 202 });
   } catch {
-    return NextResponse.json(GENERIC_RESPONSE, { status: 202 });
+    return NextResponse.json(buildGenericResponse(), { status: 202 });
   }
 }

@@ -29,6 +29,8 @@ type UserRow = {
   role: UserRole;
   password_hash: string;
   email_verified_at: string | null;
+  avatar_url?: string | null;
+  cover_url?: string | null;
 };
 
 type AuthSessionRow = {
@@ -46,6 +48,8 @@ export type AuthUser = {
   name: string;
   email: string;
   role: UserRole;
+  avatarUrl?: string | null;
+  coverUrl?: string | null;
 };
 
 export type AuthSessionInfo = {
@@ -162,6 +166,8 @@ function pickSafeUser(user: UserRow): AuthUser {
     name: user.name,
     email: user.email,
     role: user.role,
+    avatarUrl: user.avatar_url ?? null,
+    coverUrl: user.cover_url ?? null,
   };
 }
 
@@ -323,7 +329,7 @@ export function clearAuthCookies(response: NextResponse): void {
 export async function authenticate(email: string, password: string): Promise<AuthUser | null> {
   const user = await db
     .prepare(
-      "SELECT id, name, email, role, password_hash, email_verified_at FROM users WHERE LOWER(email) = LOWER(?)"
+      "SELECT id, name, email, role, password_hash, email_verified_at, avatar_url, cover_url FROM users WHERE LOWER(email) = LOWER(?)"
     )
     .get(email) as UserRow | undefined;
 
@@ -519,7 +525,7 @@ export async function rotateSession(
   }
 
   const user = await db
-    .prepare("SELECT id, name, email, role, password_hash, email_verified_at FROM users WHERE id = ?")
+    .prepare("SELECT id, name, email, role, password_hash, email_verified_at, avatar_url, cover_url FROM users WHERE id = ?")
     .get(session.user_id) as UserRow | undefined;
 
   if (!user) {
@@ -715,7 +721,7 @@ async function resolveAuthState(
   }
 
   const user = await db
-    .prepare("SELECT id, name, email, role, password_hash, email_verified_at FROM users WHERE id = ?")
+    .prepare("SELECT id, name, email, role, password_hash, email_verified_at, avatar_url, cover_url FROM users WHERE id = ?")
     .get(payload.sub) as UserRow | undefined;
 
   if (!user) {
@@ -809,7 +815,7 @@ export async function issueEmailVerificationTokenForUserId(
   request: Request | NextRequest
 ): Promise<{ user: AuthUser; token: string } | null> {
   const user = await db
-    .prepare("SELECT id, name, email, role, password_hash, email_verified_at FROM users WHERE id = ?")
+    .prepare("SELECT id, name, email, role, password_hash, email_verified_at, avatar_url, cover_url FROM users WHERE id = ?")
     .get(userId) as UserRow | undefined;
 
   if (!user) {
@@ -824,7 +830,7 @@ export async function issueEmailVerificationTokenForEmail(
   request: Request | NextRequest
 ): Promise<{ user: AuthUser; token: string } | null> {
   const user = await db
-    .prepare("SELECT id, name, email, role, password_hash, email_verified_at FROM users WHERE LOWER(email) = LOWER(?)")
+    .prepare("SELECT id, name, email, role, password_hash, email_verified_at, avatar_url, cover_url FROM users WHERE LOWER(email) = LOWER(?)")
     .get(email) as UserRow | undefined;
 
   if (!user) {
@@ -860,7 +866,7 @@ export async function verifyEmailWithToken(token: string): Promise<AuthUser> {
     }
 
     const user = await db
-      .prepare("SELECT id, name, email, role, password_hash, email_verified_at FROM users WHERE id = ?")
+      .prepare("SELECT id, name, email, role, password_hash, email_verified_at, avatar_url, cover_url FROM users WHERE id = ?")
       .get(consumed.user_id) as UserRow | undefined;
 
     if (!user) {
@@ -887,7 +893,7 @@ export async function issuePasswordResetToken(
   request: Request | NextRequest
 ): Promise<{ user: AuthUser; token: string } | null> {
   const user = await db
-    .prepare("SELECT id, name, email, role, password_hash, email_verified_at FROM users WHERE LOWER(email) = LOWER(?)")
+    .prepare("SELECT id, name, email, role, password_hash, email_verified_at, avatar_url, cover_url FROM users WHERE LOWER(email) = LOWER(?)")
     .get(email) as UserRow | undefined;
 
   if (!user) {

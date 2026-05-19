@@ -1,33 +1,39 @@
-﻿import { InfoPage } from "@/components/page/InfoPage";
+import type { Metadata } from "next";
+import { InfoPage } from "@/components/page/InfoPage";
+
+export const metadata: Metadata = {
+  title: "Topluluk",
+  description: "Üreten ve öğrenen insanların buluşma noktası. Yaratıcılar, öğrenciler ve ekip arasındaki etkileşim alanları.",
+};
 
 export default function CommunityPage() {
   return (
     <InfoPage
       badge="Topluluk"
-      title="Ureten ve ogrenen insanlarin bulusma noktasi"
-      description="Yaraticilar, ogrenciler ve ekip arasindaki etkilesimi guclendiren topluluk alanlarini tek sayfada topladik."
-      primaryCta={{ label: "Yaraticilari Kesfet", href: "/creators" }}
-      secondaryCta={{ label: "Yeni Icerikler", href: "/new" }}
+      title="Üreten ve öğrenen insanların buluşma noktası"
+      description="Yaratıcılar, öğrenciler ve ekip arasındaki etkileşimi güçlendiren topluluk alanlarını tek sayfada topladık."
+      primaryCta={{ label: "Yaratıcıları Keşfet", href: "/creators" }}
+      secondaryCta={{ label: "Yeni İçerikler", href: "/new" }}
       sections={[
         {
-          title: "Yaratici Sohbetleri",
-          description: "Alaninda uzman yaraticilarin deneyim paylastigi etkilesimli oturumlar.",
-          points: ["Haftalik canli bulusma", "Soru-cevap", "Uygulamali anlatim"],
+          title: "Yaratıcı Sohbetleri",
+          description: "Alanında uzman yaratıcıların deneyim paylaştığı etkileşimli oturumlar.",
+          points: ["Haftalık canlı buluşma", "Soru–cevap", "Uygulamalı anlatım"],
         },
         {
-          title: "Ogrenci Agi",
-          description: "Kurs katilimcilariyla proje ve geri bildirim odakli bir ag kur.",
-          points: ["Proje paylasimi", "Geri bildirim dongusu", "Eslesmeli calisma"],
+          title: "Öğrenci Ağı",
+          description: "Kurs katılımcılarıyla proje ve geri bildirim odaklı bir ağ kur.",
+          points: ["Proje paylaşımı", "Geri bildirim döngüsü", "Eşleşmeli çalışma"],
         },
         {
-          title: "Duyuru Akisi",
-          description: "Yeni icerik, etkinlik ve onemli guncellemeleri takip et.",
-          points: ["Platform duyurulari", "Etkinlik takvimi", "Kampanya haberleri"],
+          title: "Duyuru Akışı",
+          description: "Yeni içerik, etkinlik ve önemli güncellemeleri takip et.",
+          points: ["Platform duyuruları", "Etkinlik takvimi", "Kampanya haberleri"],
         },
         {
-          title: "Katki",
-          description: "Topluluga katkida bulunmak icin geri bildirim ve oneri kanallarini kullan.",
-          points: ["Ozellik onerileri", "Beta test katilimi", "Ortaklik talepleri"],
+          title: "Katkı",
+          description: "Topluluğa katkıda bulunmak için geri bildirim ve öneri kanallarını kullan.",
+          points: ["Özellik önerileri", "Beta test katılımı", "Ortaklık talepleri"],
         },
       ]}
     />

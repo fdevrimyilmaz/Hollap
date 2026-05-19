@@ -1,33 +1,40 @@
-﻿import { InfoPage } from "@/components/page/InfoPage";
+import type { Metadata } from "next";
+import { InfoPage } from "@/components/page/InfoPage";
+
+export const metadata: Metadata = {
+  title: "Nasıl Çalışır",
+  description:
+    "3 adımda yayınla, büyü, gelir elde et. İçeriğini oluştur, topluluğunu kur, ödemelerini güvenle al.",
+};
 
 export default function HowItWorksPage() {
   return (
     <InfoPage
-      badge="Nasil Calisir"
-      title="3 adimda yayinla, buyu, gelir elde et"
-      description="Icerigini olustur, toplulugunu kur, odemelerini guvenle al. Tum surec tek platformda yonetilir."
-      primaryCta={{ label: "Yaratici Hesabi Ac", href: "/signup" }}
-      secondaryCta={{ label: "Fiyatlandirmayi Gor", href: "/pricing" }}
+      badge="Nasıl Çalışır"
+      title="3 adımda yayınla, büyü, gelir elde et"
+      description="İçeriğini oluştur, topluluğunu kur, ödemelerini güvenle al. Tüm süreç tek platformda yönetilir."
+      primaryCta={{ label: "Yaratıcı Hesabı Aç", href: "/signup" }}
+      secondaryCta={{ label: "Fiyatlandırmayı Gör", href: "/pricing" }}
       sections={[
         {
-          title: "1. Icerik Olustur",
-          description: "Video, dokuman ve canli yayin iceriklerini panelden kolayca yukle.",
-          points: ["Kurs modulleri", "Ozel dosya paylasimi", "Takvimli yayin"],
+          title: "İçerik Oluştur",
+          description: "Video, doküman ve canlı yayın içeriklerini panelden kolayca yükle.",
+          points: ["Kurs modülleri", "Özel dosya paylaşımı", "Takvimli yayın"],
         },
         {
-          title: "2. Toplulugunu Buyut",
-          description: "Profil, bildirim ve sosyal kanallarla takipci tabanini guclendir.",
-          points: ["Takipci bildirimleri", "DM satis akisi", "Topluluk etkilesimi"],
+          title: "Topluluğunu Büyüt",
+          description: "Profil, bildirim ve sosyal kanallarla takipçi tabanını güçlendir.",
+          points: ["Takipçi bildirimleri", "DM satış akışı", "Topluluk etkileşimi"],
         },
         {
-          title: "3. Gelirini Artir",
-          description: "Kurs satisi, abonelik ve PPV modelleriyle birden fazla gelir kanali olustur.",
-          points: ["Kurs odemeleri", "Aylik abonelik", "Ileri seviye urunler"],
+          title: "Gelirini Artır",
+          description: "Kurs satışı, abonelik ve PPV modelleriyle birden fazla gelir kanalı oluştur.",
+          points: ["Kurs ödemeleri", "Aylık abonelik", "İleri seviye ürünler"],
         },
         {
-          title: "Performansi Izle",
-          description: "Dashboard ile satis, izlenme ve uyelik trendlerini anlik takip et.",
-          points: ["Gercek zamanli metrikler", "Urun performansi", "Gelir raporu"],
+          title: "Performansı İzle",
+          description: "Panel ile satış, izlenme ve üyelik trendlerini anlık takip et.",
+          points: ["Gerçek zamanlı metrikler", "Ürün performansı", "Gelir raporu"],
         },
       ]}
     />

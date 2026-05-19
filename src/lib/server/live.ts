@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { db, nowIso } from "@/lib/server/db";
 import { enqueueNotification } from "@/lib/server/notifications";
 import { writeAuditLog } from "@/lib/server/audit";
+import { isSubscriptionActive } from "@/lib/server/subscriptions";
 
 type LiveSessionRow = {
   id: string;
@@ -20,62 +21,60 @@ const LIVE_BLOCKED_WORDS = (process.env.LIVE_CHAT_BLOCKED_WORDS ?? "spam,scam")
   .map((word) => word.trim().toLowerCase())
   .filter(Boolean);
 
-function randomToken(size = 24): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  let result = "";
-  for (let i = 0; i < size; i += 1) {
-    result += chars[Math.floor(Math.random() * chars.length)];
+export class LiveProviderUnavailableError extends Error {
+  constructor() {
+    super("Canlı yayın sağlayıcısı yapılandırılmamış. MUX_TOKEN_ID ve MUX_TOKEN_SECRET gerekli.");
+    this.name = "LiveProviderUnavailableError";
   }
-  return result;
+}
+
+export function isLiveProviderConfigured(): boolean {
+  return Boolean(process.env.MUX_TOKEN_ID?.trim() && process.env.MUX_TOKEN_SECRET?.trim());
 }
 
 async function provisionLiveIngest(): Promise<{
   streamKey: string;
   playbackUrl: string | null;
-  provider: "mux" | "local";
+  provider: "mux";
 }> {
   const muxTokenId = process.env.MUX_TOKEN_ID;
   const muxTokenSecret = process.env.MUX_TOKEN_SECRET;
 
-  if (muxTokenId && muxTokenSecret) {
-    const auth = Buffer.from(`${muxTokenId}:${muxTokenSecret}`).toString("base64");
-    const response = await fetch("https://api.mux.com/video/v1/live-streams", {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        playback_policy: ["public"],
-        reconnect_window: 60,
-      }),
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`Mux live stream creation failed: ${response.status} ${body}`);
-    }
-
-    const payload = (await response.json()) as {
-      data: {
-        stream_key: string;
-        playback_ids?: Array<{ id: string }>;
-      };
-    };
-
-    const playbackId = payload.data.playback_ids?.[0]?.id ?? null;
-
-    return {
-      streamKey: payload.data.stream_key,
-      playbackUrl: playbackId ? `https://stream.mux.com/${playbackId}.m3u8` : null,
-      provider: "mux",
-    };
+  if (!muxTokenId || !muxTokenSecret) {
+    throw new LiveProviderUnavailableError();
   }
 
+  const auth = Buffer.from(`${muxTokenId}:${muxTokenSecret}`).toString("base64");
+  const response = await fetch("https://api.mux.com/video/v1/live-streams", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      playback_policy: ["public"],
+      reconnect_window: 60,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Mux live stream creation failed: ${response.status} ${body}`);
+  }
+
+  const payload = (await response.json()) as {
+    data: {
+      stream_key: string;
+      playback_ids?: Array<{ id: string }>;
+    };
+  };
+
+  const playbackId = payload.data.playback_ids?.[0]?.id ?? null;
+
   return {
-    streamKey: `local_${randomToken(32)}`,
-    playbackUrl: null,
-    provider: "local",
+    streamKey: payload.data.stream_key,
+    playbackUrl: playbackId ? `https://stream.mux.com/${playbackId}.m3u8` : null,
+    provider: "mux",
   };
 }
 
@@ -87,6 +86,8 @@ export async function listCreatorLiveSessions(creatorId: string): Promise<Array<
   total: number;
   isLive: boolean;
   streamKeyAvailable: boolean;
+  streamKey: string | null;
+  ingestUrl: string | null;
   playbackUrl: string | null;
 }>> {
   const rows = await db
@@ -100,6 +101,8 @@ export async function listCreatorLiveSessions(creatorId: string): Promise<Array<
     )
     .all(creatorId);
 
+  const muxConfigured = Boolean(process.env.MUX_TOKEN_ID && process.env.MUX_TOKEN_SECRET);
+
   return rows.map((row) => {
     const session = row as LiveSessionRow;
     return {
@@ -110,6 +113,8 @@ export async function listCreatorLiveSessions(creatorId: string): Promise<Array<
       total: session.total,
       isLive: session.status === "live",
       streamKeyAvailable: Boolean(session.stream_key),
+      streamKey: session.stream_key ?? null,
+      ingestUrl: muxConfigured && session.stream_key ? "rtmp://global-live.mux.com:5222/app" : null,
       playbackUrl: session.playback_url,
     };
   });
@@ -175,13 +180,22 @@ export async function toggleLiveSession(params: {
     `
   ).run(ingest.streamKey, ingest.playbackUrl, nowIso(), session.id);
 
-  const subscribers = await db
+  const subscribers = (await db
     .prepare(
-      "SELECT subscriber_id FROM subscriptions WHERE creator_id = ? AND stripe_status IN ('active', 'trialing')"
+      `SELECT subscriber_id, active, stripe_status, current_period_end
+       FROM subscriptions
+       WHERE creator_id = ?`,
     )
-    .all(params.creatorId) as Array<{ subscriber_id: string }>;
+    .all(params.creatorId)) as Array<{
+      subscriber_id: string;
+      active: number;
+      stripe_status: string | null;
+      current_period_end: string | null;
+    }>;
 
-  for (const subscriber of subscribers) {
+  const activeSubscribers = subscribers.filter((row) => isSubscriptionActive(row));
+
+  for (const subscriber of activeSubscribers) {
     await enqueueNotification({
       userId: subscriber.subscriber_id,
       type: "live",
@@ -230,13 +244,16 @@ async function assertLiveAccess(sessionId: string, userId: string): Promise<Live
     return session;
   }
 
-  const subscription = await db
+  const subRow = (await db
     .prepare(
-      "SELECT id FROM subscriptions WHERE creator_id = ? AND subscriber_id = ? AND stripe_status IN ('active', 'trialing')"
+      `SELECT active, stripe_status, current_period_end
+       FROM subscriptions WHERE creator_id = ? AND subscriber_id = ?`,
     )
-    .get(session.creator_id, userId) as { id: string } | undefined;
+    .get(session.creator_id, userId)) as
+    | { active: number; stripe_status: string | null; current_period_end: string | null }
+    | undefined;
 
-  if (!subscription) {
+  if (!isSubscriptionActive(subRow)) {
     throw new Error("Live session access denied");
   }
 

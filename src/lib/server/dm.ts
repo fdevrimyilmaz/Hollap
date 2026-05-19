@@ -374,10 +374,17 @@ export async function listDmOrdersForCreator(creatorId: string): Promise<Array<{
 export async function markDmOrderCompleted(orderId: string, actorUserId: string): Promise<void> {
   const order = await db
     .prepare(
-      "SELECT id, creator_id, subscriber_id, status FROM dm_orders WHERE id = ?"
+      "SELECT id, creator_id, subscriber_id, status, payment_intent_id, payment_ref FROM dm_orders WHERE id = ?"
     )
     .get(orderId) as
-    | { id: string; creator_id: string; subscriber_id: string; status: string }
+    | {
+        id: string;
+        creator_id: string;
+        subscriber_id: string;
+        status: string;
+        payment_intent_id: string | null;
+        payment_ref: string | null;
+      }
     | undefined;
 
   if (!order) {
@@ -390,6 +397,13 @@ export async function markDmOrderCompleted(orderId: string, actorUserId: string)
 
   if (order.status !== "paid") {
     throw new Error("Order must be paid before completion");
+  }
+
+  // Defense-in-depth: status=paid alone is set by Stripe webhook, but require
+  // a payment reference (payment_intent_id or payment_ref) so a creator cannot
+  // complete an order that lost its payment trail (e.g. webhook regression).
+  if (!order.payment_intent_id && !order.payment_ref) {
+    throw new Error("Order is marked paid but has no payment reference; cannot complete");
   }
 
   await db.prepare("UPDATE dm_orders SET status = 'completed', updated_at = ? WHERE id = ?").run(

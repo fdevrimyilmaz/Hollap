@@ -11,9 +11,46 @@ interface VideoPlayerProps {
   duration?: string;
   isLocked?: boolean;
   onUnlock?: () => void;
+  /** When set, renders a real HTML5 <video> element instead of the placeholder UI. */
+  src?: string | null;
 }
 
-export function VideoPlayer({ thumbnail, title, duration, isLocked = false, onUnlock }: VideoPlayerProps) {
+function NativeVideoPlayer({ src, thumbnail, title }: { src: string; thumbnail: string; title: string }) {
+  return (
+    <div className="relative aspect-video bg-black overflow-hidden rounded-2xl">
+      <video
+        key={src}
+        src={src}
+        poster={thumbnail}
+        controls
+        controlsList="nodownload"
+        playsInline
+        className="w-full h-full"
+        aria-label={title}
+      />
+    </div>
+  );
+}
+
+export function VideoPlayer({ thumbnail, title, duration, isLocked = false, onUnlock, src }: VideoPlayerProps) {
+  // When a real source is provided, the native player handles its own lifecycle.
+  // We early-return BEFORE the placeholder's hooks so they are not declared.
+  // This is safe under "rules-of-hooks" because the early return is a pure
+  // delegation to another component — the placeholder branch never runs in
+  // this render and its hooks are not part of this component's order.
+  return src && !isLocked
+    ? <NativeVideoPlayer src={src} thumbnail={thumbnail} title={title} />
+    : <PlaceholderPlayer thumbnail={thumbnail} title={title} duration={duration} isLocked={isLocked} onUnlock={onUnlock} />;
+}
+
+function PlaceholderPlayer({ thumbnail, title, duration, isLocked, onUnlock }: {
+  thumbnail: string;
+  title: string;
+  duration?: string;
+  isLocked: boolean;
+  onUnlock?: () => void;
+}) {
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState("0:00");

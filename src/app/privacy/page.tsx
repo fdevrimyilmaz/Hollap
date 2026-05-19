@@ -1,99 +1,107 @@
+import type { Metadata } from "next";
 import { InfoPage } from "@/components/page/InfoPage";
+
+export const metadata: Metadata = {
+  title: "Gizlilik Politikası",
+  description: "Hollap'ın kişisel verilerinizi nasıl topladığı, işlediği, sakladığı ve haklarınızı kullanabileceğiniz yöntemler.",
+};
 
 export default function PrivacyPage() {
   return (
     <InfoPage
-      badge="Gizlilik Politikasi"
-      title="Kisisel verilerinizin korunmasi ve islenmesi"
-      description="Bu politika, Hollap hizmetleri kapsaminda hangi verileri hangi hukuki dayanaklarla isledigimizi, ne kadar sure sakladigimizi ve haklarinizi nasil kullanabileceginizi aciklar."
-      primaryCta={{ label: "Iletisime Gec", href: "/contact" }}
-      secondaryCta={{ label: "Kullanim Sartlari", href: "/terms" }}
+      badge="Gizlilik Politikası"
+      title="Kişisel verilerinizin korunması ve işlenmesi"
+      description="Bu politika; Hollap hizmetleri kapsamında hangi verileri hangi hukuki dayanaklarla işlediğimizi, ne kadar süre sakladığımızı ve haklarınızı nasıl kullanabileceğinizi açıklar."
+      primaryCta={{ label: "İletişime Geç", href: "/contact" }}
+      secondaryCta={{ label: "Kullanım Şartları", href: "/terms" }}
       sections={[
         {
           title: "Kapsam ve Veri Sorumlusu",
-          description: "Bu politika, web sitesi, mobil uyumlu ekranlar, API servisleri ve destek kanallari dahil olmak uzere Hollap tarafindan sunulan tum hizmetleri kapsar.",
+          description:
+            "Bu politika; web sitesi, mobil uyumlu ekranlar, API servisleri ve destek kanalları dahil olmak üzere Hollap tarafından sunulan tüm hizmetleri kapsar.",
           points: [
-            "Veri sorumlusu: Hollap platform isletmecisi.",
-            "Politika; ziyaretci, uye, yaratici ve alici profillerine uygulanir.",
-            "Yururluk tarihi: 13 Subat 2026.",
+            "Veri sorumlusu: Hollap platform işletmecisi.",
+            "Politika; ziyaretçi, üye, yaratıcı ve alıcı profillerine uygulanır.",
+            "Yürürlük tarihi: 13 Şubat 2026.",
           ],
         },
         {
           title: "Toplanan Veri Kategorileri",
-          description: "Hizmetin niteligine gore yalnizca gerekli veriler toplanir ve asgari veri ilkesi uygulanir.",
+          description:
+            "Hizmetin niteliğine göre yalnızca gerekli veriler toplanır ve asgari veri ilkesi uygulanır.",
           points: [
-            "Kimlik ve hesap verileri: ad soyad, e-posta, sifre hash bilgisi, rol bilgisi.",
-            "Islem verileri: urun, siparis, abonelik, odeme referansi ve iade kayitlari.",
-            "Teknik veriler: IP, cihaz/tarayici bilgileri, oturum kayitlari, guvenlik loglari.",
-            "Iletisim verileri: destek talepleri, geri bildirimler ve bildirim tercihleri.",
+            "Kimlik ve hesap verileri: ad soyad, e-posta, şifre hash bilgisi, rol bilgisi.",
+            "İşlem verileri: ürün, sipariş, abonelik, ödeme referansı ve iade kayıtları.",
+            "Teknik veriler: IP, cihaz/tarayıcı bilgileri, oturum kayıtları, güvenlik logları.",
+            "İletişim verileri: destek talepleri, geri bildirimler ve bildirim tercihleri.",
           ],
         },
         {
-          title: "Isleme Amaclari",
-          description: "Veriler, hizmetin kurulmasi, sunulmasi ve guvenli sekilde surdurulmesi icin islenir.",
+          title: "İşleme Amaçları",
+          description: "Veriler; hizmetin kurulması, sunulması ve güvenli şekilde sürdürülmesi için işlenir.",
           points: [
-            "Hesap olusturma, kimlik dogrulama ve yetkilendirme sureclerini yurutmek.",
-            "Odeme, faturalama, abonelik ve teslimat operasyonlarini tamamlamak.",
-            "Dolandiricilik, yetkisiz erisim ve kotuye kullanim risklerini azaltmak.",
-            "Urun ve hizmet performansini izlemek, hatalari gidermek ve platformu gelistirmek.",
+            "Hesap oluşturma, kimlik doğrulama ve yetkilendirme süreçlerini yürütmek.",
+            "Ödeme, faturalama, abonelik ve teslimat operasyonlarını tamamlamak.",
+            "Dolandırıcılık, yetkisiz erişim ve kötüye kullanım risklerini azaltmak.",
+            "Ürün ve hizmet performansını izlemek, hataları gidermek ve platformu geliştirmek.",
           ],
         },
         {
           title: "Hukuki Dayanaklar",
-          description: "Kisisel veri isleme faaliyetleri ilgili mevzuata uygun hukuki sebeplere dayanir.",
+          description: "Kişisel veri işleme faaliyetleri ilgili mevzuata uygun hukuki sebeplere dayanır.",
           points: [
-            "Sozlesmenin kurulmasi ve ifasi icin zorunlu islemler.",
-            "Yasal yukumluluklerin yerine getirilmesi (muhasebe, denetim, kayit tutma).",
-            "Mesru menfaat kapsaminda guvenlik, kalite ve operasyon surekliligi islemleri.",
-            "Gerektiginde acik riza (ornegin pazarlama iletisim tercihleri).",
+            "Sözleşmenin kurulması ve ifası için zorunlu işlemler.",
+            "Yasal yükümlülüklerin yerine getirilmesi (muhasebe, denetim, kayıt tutma).",
+            "Meşru menfaat kapsamında güvenlik, kalite ve operasyon sürekliliği işlemleri.",
+            "Gerektiğinde açık rıza (örneğin pazarlama iletişim tercihleri).",
           ],
         },
         {
-          title: "Veri Paylasimi ve Aktarim",
-          description: "Veriler, hizmeti sunmak icin zorunlu olan sinirli alicilarla paylasilir; gereksiz aktarim yapilmaz.",
+          title: "Veri Paylaşımı ve Aktarım",
+          description: "Veriler; hizmeti sunmak için zorunlu olan sınırlı alıcılarla paylaşılır, gereksiz aktarım yapılmaz.",
           points: [
-            "Odeme hizmet saglayicilari (odeme islemleri ve sahtecilik kontrolleri).",
-            "Altyapi saglayicilari (barindirma, depolama, bildirim ve e-posta servisleri).",
-            "Hukuki zorunluluk halinde yetkili kamu kurumlari ve yargi mercileri.",
-            "Tum aktarimlarda gizlilik ve veri isleme yukumlulukleri sozlesmelerle korunur.",
+            "Ödeme hizmet sağlayıcıları (ödeme işlemleri ve sahtecilik kontrolleri).",
+            "Altyapı sağlayıcıları (barındırma, depolama, bildirim ve e-posta servisleri).",
+            "Hukuki zorunluluk halinde yetkili kamu kurumları ve yargı mercileri.",
+            "Tüm aktarımlarda gizlilik ve veri işleme yükümlülükleri sözleşmelerle korunur.",
           ],
         },
         {
-          title: "Saklama Sureleri",
-          description: "Veriler, yalnizca isleme amaci icin gerekli sure boyunca veya mevzuatin zorunlu kildigi sure kadar saklanir.",
+          title: "Saklama Süreleri",
+          description: "Veriler; yalnızca işleme amacı için gerekli süre boyunca veya mevzuatın zorunlu kıldığı süre kadar saklanır.",
           points: [
-            "Hesap ve oturum kayitlari: hesap aktifligi ve guvenlik ihtiyacina gore.",
-            "Finansal ve islemsel kayitlar: ilgili vergi ve muhasebe mevzuati surelerince.",
-            "Destek ve guvenlik loglari: denetim, uyusmazlik ve guvenlik ihtiyacina gore.",
-            "Sure sonunda veriler silinir, anonimlestirilir veya mevzuata uygun imha edilir.",
+            "Hesap ve oturum kayıtları: hesap aktifliği ve güvenlik ihtiyacına göre.",
+            "Finansal ve işlemsel kayıtlar: ilgili vergi ve muhasebe mevzuatı sürelerince.",
+            "Destek ve güvenlik logları: denetim, uyuşmazlık ve güvenlik ihtiyacına göre.",
+            "Süre sonunda veriler silinir, anonimleştirilir veya mevzuata uygun imha edilir.",
           ],
         },
         {
-          title: "Veri Guvenligi",
-          description: "Teknik ve idari tedbirler, verilerin gizliligi, butunlugu ve erisilebilirligini korumak icin uygulanir.",
+          title: "Veri Güvenliği",
+          description: "Teknik ve idari tedbirler; verilerin gizliliği, bütünlüğü ve erişilebilirliğini korumak için uygulanır.",
           points: [
-            "Rol tabanli erisim kontrolu ve oturum guvenligi mekanizmalari.",
-            "Sifrelerin tek yonlu hash algoritmalari ile saklanmasi.",
-            "Yetkisiz islem, kotuye kullanim ve anomali tespiti icin loglama ve izleme.",
-            "Guncel guvenlik yamalari, yedekleme ve olay yonetimi surecleri.",
+            "Rol tabanlı erişim kontrolü ve oturum güvenliği mekanizmaları.",
+            "Şifrelerin tek yönlü hash algoritmaları ile saklanması.",
+            "Yetkisiz işlem, kötüye kullanım ve anomali tespiti için loglama ve izleme.",
+            "Güncel güvenlik yamaları, yedekleme ve olay yönetimi süreçleri.",
           ],
         },
         {
-          title: "Haklariniz ve Basvuru",
-          description: "Mevzuatin tanidigi haklar kapsaminda verilerinize iliskin talepte bulunabilirsiniz.",
+          title: "Haklarınız ve Başvuru",
+          description: "Mevzuatın tanıdığı haklar kapsamında verilerinize ilişkin talepte bulunabilirsiniz.",
           points: [
-            "Veriye erisim, duzeltme, silme ve islemeyi kisitlama talepleri.",
-            "Belirli islemlere itiraz ve uygun oldugunda veri tasinabilirligi talepleri.",
-            "Acik riza gerektiren islemlerde rizanin geri alinmasi hakki.",
-            "Basvuru icin: support@hollap.com uzerinden kimlik dogrulamali talep iletebilirsiniz.",
+            "Veriye erişim, düzeltme, silme ve işlemeyi kısıtlama talepleri.",
+            "Belirli işlemlere itiraz ve uygun olduğunda veri taşınabilirliği talepleri.",
+            "Açık rıza gerektiren işlemlerde rızanın geri alınması hakkı.",
+            "Başvuru için: support@hollap.com üzerinden kimlik doğrulamalı talep iletebilirsiniz.",
           ],
         },
         {
-          title: "Politika Guncellemeleri",
-          description: "Bu politika, mevzuat degisiklikleri veya hizmet gelisimine bagli olarak guncellenebilir.",
+          title: "Politika Güncellemeleri",
+          description: "Bu politika; mevzuat değişiklikleri veya hizmet gelişimine bağlı olarak güncellenebilir.",
           points: [
-            "Onemli degisiklikler yururluk tarihleriyle birlikte bu sayfada ilan edilir.",
-            "Guncel surumun takibi kullanicinin sorumlulugundadir.",
+            "Önemli değişiklikler yürürlük tarihleriyle birlikte bu sayfada ilan edilir.",
+            "Güncel sürümün takibi kullanıcının sorumluluğundadır.",
           ],
         },
       ]}

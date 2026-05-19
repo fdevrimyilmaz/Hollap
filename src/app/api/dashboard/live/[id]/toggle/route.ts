@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authErrorResponse, requireAuth } from "@/lib/server/auth";
-import { toggleLiveSession } from "@/lib/server/live";
+import { LiveProviderUnavailableError, toggleLiveSession } from "@/lib/server/live";
 import { assertCsrf } from "@/lib/server/security";
 
 type Params = {
@@ -23,6 +23,15 @@ export async function POST(request: Request, context: Params) {
       session,
     });
   } catch (error) {
+    if (error instanceof LiveProviderUnavailableError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          configured: false,
+        },
+        { status: 503 },
+      );
+    }
     return authErrorResponse(error);
   }
 }

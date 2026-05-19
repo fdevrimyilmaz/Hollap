@@ -75,8 +75,14 @@ export function NotificationsDropdown() {
     markAsRead,
     refreshNotifications,
     isLoading,
+    isAuthenticated,
   } =
     useNotificationCenter();
+
+  // Don't show the bell icon for guests
+  if (!isLoading && !isAuthenticated) {
+    return null;
+  }
 
   const formatNotificationTime = (value: string) => {
     const date = new Date(value);
@@ -85,12 +91,12 @@ export function NotificationsDropdown() {
     }
 
     const minutes = Math.floor((Date.now() - date.getTime()) / (60 * 1000));
-    if (minutes < 1) return "simdi";
-    if (minutes < 60) return `${minutes} dk once`;
+    if (minutes < 1) return "şimdi";
+    if (minutes < 60) return `${minutes} dk önce`;
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours} saat once`;
+    if (hours < 24) return `${hours} saat önce`;
     const days = Math.floor(hours / 24);
-    return `${days} gun once`;
+    return `${days} gün önce`;
   };
 
   return (
@@ -104,45 +110,56 @@ export function NotificationsDropdown() {
       }}
     >
       <PopoverTrigger asChild>
-        <button className="relative p-2 rounded-lg hover:bg-white/5 transition-colors">
-          <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        <button
+          type="button"
+          className="relative p-2.5 rounded-xl hover:bg-white/5 transition-colors"
+          aria-label={unreadCount > 0 ? `Bildirimler (${unreadCount} okunmamış)` : "Bildirimler"}
+        >
+          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
           </svg>
           {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 w-5 h-5 rounded-full gradient-bg text-white text-xs flex items-center justify-center font-medium">
-              {unreadCount}
+            <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 rounded-full gradient-bg text-white text-[10px] flex items-center justify-center font-bold tabular-nums ring-2 ring-background">
+              {unreadCount > 9 ? "9+" : unreadCount}
             </span>
           )}
         </button>
       </PopoverTrigger>
 
       <PopoverContent
-        className="w-96 p-0 bg-card border-white/10"
+        className="w-[360px] sm:w-96 p-0 bg-card border-white/10"
         align="end"
-        sideOffset={8}
+        sideOffset={10}
       >
         <div className="flex items-center justify-between p-4 border-b border-white/10">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold text-white">Bildirimler</h3>
             {unreadCount > 0 && (
-              <Badge className="gradient-bg border-0 text-xs">{unreadCount} yeni</Badge>
+              <Badge className="gradient-bg border-0 text-[10px] font-semibold tabular-nums">
+                {unreadCount} yeni
+              </Badge>
             )}
           </div>
           {unreadCount > 0 && (
             <button
-              onClick={() => {
-                void markAllAsRead();
-              }}
-              className="text-sm text-orange-500 hover:text-orange-400 transition-colors"
+              type="button"
+              onClick={() => void markAllAsRead()}
+              className="text-xs font-medium text-orange-400 hover:text-orange-300 transition-colors"
             >
-              Tumunu Okundu Isaretle
+              Tümünü okundu işaretle
             </button>
           )}
         </div>
 
         <ScrollArea className="h-[400px]">
           {isLoading ? (
-            <div className="p-4 text-sm text-muted-foreground">Bildirimler yukleniyor...</div>
+            <div className="p-4 text-sm text-muted-foreground flex items-center gap-2.5">
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+                <path fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z" />
+              </svg>
+              Yükleniyor…
+            </div>
           ) : notifications.length > 0 ? (
             <div className="divide-y divide-white/5">
               {notifications.map((notification) => (
@@ -192,15 +209,16 @@ export function NotificationsDropdown() {
               <svg className="w-12 h-12 text-muted-foreground mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
               </svg>
-              <p className="text-muted-foreground">Henuz bildirim yok</p>
+              <p className="text-sm text-muted-foreground">Henüz bildirim yok</p>
+              <p className="text-xs text-muted-foreground/70 mt-1">Yeni etkinlikler burada görünecek</p>
             </div>
           )}
         </ScrollArea>
 
         <div className="p-3 border-t border-white/10">
           <Link href="/dashboard/notifications" onClick={() => setIsOpen(false)}>
-            <Button variant="outline" className="w-full border-white/10 hover:bg-white/5">
-              Tum Bildirimleri Gor
+            <Button variant="outline" size="sm" className="w-full border-white/10 hover:bg-white/5 hover:border-white/20 font-medium">
+              Tüm bildirimleri gör
             </Button>
           </Link>
         </div>

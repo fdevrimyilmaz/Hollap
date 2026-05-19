@@ -1,33 +1,40 @@
-﻿import { InfoPage } from "@/components/page/InfoPage";
+import type { Metadata } from "next";
+import { InfoPage } from "@/components/page/InfoPage";
+
+export const metadata: Metadata = {
+  title: "Yardım Merkezi",
+  description:
+    "Hesap, ödeme, içerik yönetimi ve teknik konularda yardım alabileceğin temel kaynaklar.",
+};
 
 export default function HelpPage() {
   return (
     <InfoPage
-      badge="Yardim Merkezi"
-      title="Ihtiyacin oldugunda hizli destek"
-      description="Hesap, odeme, icerik yonetimi ve teknik konularda yardim alabilecegin temel kaynaklar burada."
-      primaryCta={{ label: "SSS Sayfasi", href: "/faq" }}
-      secondaryCta={{ label: "Iletisime Gec", href: "/contact" }}
+      badge="Yardım Merkezi"
+      title="İhtiyacın olduğunda hızlı destek"
+      description="Hesap, ödeme, içerik yönetimi ve teknik konularda yardım alabileceğin temel kaynakları bir araya getirdik."
+      primaryCta={{ label: "SSS Sayfası", href: "/faq" }}
+      secondaryCta={{ label: "İletişime Geç", href: "/contact" }}
       sections={[
         {
-          title: "Hesap ve Giris",
-          description: "Giris, sifre sifirlama ve hesap guvenligi konularinda adim adim yardim.",
-          points: ["Sifre yenileme", "Oturum yonetimi", "Guvenlik onerileri"],
+          title: "Hesap ve Giriş",
+          description: "Giriş, şifre sıfırlama ve hesap güvenliği konularında adım adım yardım.",
+          points: ["Şifre yenileme", "Oturum yönetimi", "Güvenlik önerileri"],
         },
         {
-          title: "Odeme ve Faturalama",
-          description: "Satis, iade ve odeme akislarinda en cok sorulan konular.",
-          points: ["Checkout sorunlari", "Iade talepleri", "Odeme durumu"],
+          title: "Ödeme ve Faturalama",
+          description: "Satış, iade ve ödeme akışlarında en çok sorulan konular.",
+          points: ["Ödeme sorunları", "İade talepleri", "Ödeme durumu"],
         },
         {
-          title: "Yaratici Paneli",
-          description: "Kurs yayinlama, dosya gonderimi ve urun yonetimi yardim basliklari.",
-          points: ["Icerik ekleme", "Urun aktiflestirme", "Canli yayin"],
+          title: "Yaratıcı Paneli",
+          description: "Kurs yayınlama, dosya gönderimi ve ürün yönetimi yardım başlıkları.",
+          points: ["İçerik ekleme", "Ürün aktifleştirme", "Canlı yayın"],
         },
         {
           title: "Topluluk",
-          description: "Diger yaraticilar ve ogrencilerle baglanti kurmak icin topluluk kanallari.",
-          points: ["Topluluk duyurulari", "Geri bildirim", "Ortaklik firsatlari"],
+          description: "Diğer yaratıcılar ve öğrencilerle bağlantı kurmak için topluluk kanalları.",
+          points: ["Topluluk duyuruları", "Geri bildirim", "Ortaklık fırsatları"],
         },
       ]}
     />

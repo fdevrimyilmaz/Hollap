@@ -44,9 +44,11 @@ export async function getCreatorDashboard(creatorId: string): Promise<{
     total: number;
     isLive: boolean;
     streamKeyAvailable: boolean;
+    streamKey: string | null;
+    ingestUrl: string | null;
     playbackUrl: string | null;
   }>;
-  products: Array<{ id: string; name: string; price: number; stock: number; sold: number; isActive: boolean }>;
+  products: Array<{ id: string; name: string; price: number; stock: number; sold: number; isActive: boolean; thumbnailUrl: string | null }>;
   dmOrders: Array<{
     id: string;
     buyer: string;
@@ -72,9 +74,13 @@ export async function getCreatorDashboard(creatorId: string): Promise<{
 
   const subscriberCount = await db
     .prepare(
-      "SELECT COUNT(*) as count FROM subscriptions WHERE creator_id = ? AND stripe_status IN ('active', 'trialing')"
+      `SELECT COUNT(*) as count FROM subscriptions
+       WHERE creator_id = ?
+         AND active = 1
+         AND LOWER(COALESCE(stripe_status, '')) IN ('active', 'trialing')
+         AND (current_period_end IS NULL OR current_period_end > ?)`,
     )
-    .get(creatorId) as { count: number };
+    .get(creatorId, new Date().toISOString()) as { count: number };
 
   const recentSalesRows = await db
     .prepare(
@@ -98,7 +104,7 @@ export async function getCreatorDashboard(creatorId: string): Promise<{
   const products = await db
     .prepare(
       `
-        SELECT id, name, price_cents, stock, sold, is_active
+        SELECT id, name, price_cents, stock, sold, is_active, thumbnail_url
         FROM products
         WHERE creator_id = ?
         ORDER BY created_at DESC
@@ -111,6 +117,7 @@ export async function getCreatorDashboard(creatorId: string): Promise<{
       stock: number;
       sold: number;
       is_active: number;
+      thumbnail_url: string | null;
     }>;
 
   const dispatches = await db
@@ -141,7 +148,7 @@ export async function getCreatorDashboard(creatorId: string): Promise<{
   return {
     stats: [
       {
-        label: `Toplam Kazanc (Net %${CREATOR_REVENUE_SHARE_PERCENT})`,
+        label: `Toplam Kazanç (Net %${CREATOR_REVENUE_SHARE_PERCENT})`,
         value: formatCurrencyFromCents(creatorNetEarningsCents),
         change: "+12%",
       },
@@ -151,7 +158,7 @@ export async function getCreatorDashboard(creatorId: string): Promise<{
         change: "+6%",
       },
       {
-        label: "Kurs Satisi",
+        label: "Kurs Satışı",
         value: `${totals.sales_count}`,
         change: "+9%",
       },
@@ -175,6 +182,7 @@ export async function getCreatorDashboard(creatorId: string): Promise<{
       stock: product.stock,
       sold: product.sold,
       isActive: Boolean(product.is_active),
+      thumbnailUrl: product.thumbnail_url,
     })),
     dmOrders,
     sentFilesLog: dispatches.map((item) => ({

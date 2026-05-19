@@ -41,6 +41,7 @@ interface NotificationCenterValue {
   notifications: AppNotification[];
   unreadCount: number;
   isLoading: boolean;
+  isAuthenticated: boolean;
   addNotification: (notification: NotificationInput) => void;
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
@@ -81,6 +82,7 @@ function normalizeNotification(payload: {
 export function NotificationCenterProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const refreshNotifications = useCallback(async () => {
     try {
@@ -89,9 +91,17 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
         cache: "no-store",
       });
 
+      if (response.status === 401 || response.status === 403) {
+        setIsAuthenticated(false);
+        setNotifications([]);
+        return;
+      }
+
       if (!response.ok) {
         return;
       }
+
+      setIsAuthenticated(true);
 
       const data = (await response.json()) as {
         notifications: Array<{
@@ -167,6 +177,7 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
       notifications,
       unreadCount,
       isLoading,
+      isAuthenticated,
       addNotification,
       markAsRead,
       markAllAsRead,
@@ -176,6 +187,7 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
       notifications,
       unreadCount,
       isLoading,
+      isAuthenticated,
       addNotification,
       markAsRead,
       markAllAsRead,

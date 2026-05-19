@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { NotificationCenterProvider } from "@/components/NotificationCenter";
+import { I18nProvider } from "@/lib/i18n/context";
 
 export default function ClientBody({
   children,
@@ -15,8 +16,10 @@ export default function ClientBody({
   }, []);
 
   return (
-    <NotificationCenterProvider>
-      <div className="antialiased">{children}</div>
-    </NotificationCenterProvider>
+    <I18nProvider>
+      <NotificationCenterProvider>
+        <div className="antialiased">{children}</div>
+      </NotificationCenterProvider>
+    </I18nProvider>
   );
 }

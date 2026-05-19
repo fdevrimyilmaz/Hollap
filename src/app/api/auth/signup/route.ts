@@ -8,7 +8,7 @@ import {
   issueEmailVerificationTokenForUserId,
 } from "@/lib/server/auth";
 import { writeAuditLog } from "@/lib/server/audit";
-import { sendEmailVerificationEmail } from "@/lib/server/auth-mail";
+import { isEmailConfigured, sendEmailVerificationEmail } from "@/lib/server/auth-mail";
 import { assertCsrf, consumeRateLimit, getClientIp } from "@/lib/server/security";
 import { parseJsonBody } from "@/lib/server/validation";
 import type { UserRole } from "@/lib/server/types";
@@ -20,9 +20,17 @@ const signupSchema = z.object({
   role: z.enum(["creator", "subscriber"]).optional(),
 });
 
-const SIGNUP_RESPONSE = {
+const SIGNUP_RESPONSE_WITH_EMAIL = {
   ok: true,
+  emailDelivery: "sent" as const,
   message: "Kayit alindi. Lutfen e-posta kutunuzu kontrol edip hesabinizi dogrulayin.",
+};
+
+const SIGNUP_RESPONSE_NO_EMAIL = {
+  ok: true,
+  emailDelivery: "not_configured" as const,
+  message:
+    "Kayit alindi. E-posta servisi yapilandirilmadigi icin dogrulama linki sunucu loglarinda. Yoneticiye danis.",
 };
 
 export async function POST(request: Request) {
@@ -134,7 +142,10 @@ export async function POST(request: Request) {
       });
     }
 
-    return NextResponse.json(SIGNUP_RESPONSE, { status: 201 });
+    return NextResponse.json(
+      isEmailConfigured() ? SIGNUP_RESPONSE_WITH_EMAIL : SIGNUP_RESPONSE_NO_EMAIL,
+      { status: 201 },
+    );
   } catch (error) {
     return authErrorResponse(error);
   }

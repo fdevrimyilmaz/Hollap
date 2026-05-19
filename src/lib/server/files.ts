@@ -50,17 +50,45 @@ const STORAGE_KEY_PREFIX = (process.env.OBJECT_STORAGE_KEY_PREFIX ?? "private")
   .replace(/^\/+|\/+$/g, "");
 
 const ALLOWED_MIME_TYPES = new Set([
+  // Belgeler
   "application/pdf",
+  "application/zip",
+  "application/x-zip-compressed",
+  // Görseller
   "image/png",
   "image/jpeg",
-  "application/zip",
+  "image/webp",
+  "image/gif",
+  "image/svg+xml",
+  // Video
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  // Ses
+  "audio/mpeg",
+  "audio/mp4",
+  "audio/wav",
+  "audio/ogg",
+  "audio/webm",
 ]);
 
 const MIME_EXTENSION: Record<string, string> = {
   "application/pdf": ".pdf",
+  "application/zip": ".zip",
+  "application/x-zip-compressed": ".zip",
   "image/png": ".png",
   "image/jpeg": ".jpg",
-  "application/zip": ".zip",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+  "image/svg+xml": ".svg",
+  "video/mp4": ".mp4",
+  "video/webm": ".webm",
+  "video/quicktime": ".mov",
+  "audio/mpeg": ".mp3",
+  "audio/mp4": ".m4a",
+  "audio/wav": ".wav",
+  "audio/ogg": ".ogg",
+  "audio/webm": ".weba",
 };
 
 function sanitizeFileName(name: string): string {
@@ -259,25 +287,45 @@ export async function grantFilesByAudience(params: {
 }): Promise<number> {
   let subscribers: Array<{ subscriber_id: string }> = [];
 
+  // Only grant to subscriptions whose paid period (if any) has not lapsed.
+  // current_period_end IS NULL means free tier (always valid until canceled).
+  const periodGuard =
+    "AND (current_period_end IS NULL OR current_period_end > ?)";
+  const nowTs = nowIso();
+
   if (params.audience === "tum-aboneler") {
     subscribers = (await db
       .prepare(
-        "SELECT subscriber_id FROM subscriptions WHERE creator_id = ? AND stripe_status IN ('active', 'trialing')"
+        `SELECT subscriber_id FROM subscriptions
+         WHERE creator_id = ?
+           AND active = 1
+           AND LOWER(COALESCE(stripe_status, '')) IN ('active', 'trialing')
+           ${periodGuard}`,
       )
-      .all(params.creatorId)) as Array<{ subscriber_id: string }>;
+      .all(params.creatorId, nowTs)) as Array<{ subscriber_id: string }>;
   } else if (params.audience === "vip") {
     subscribers = (await db
       .prepare(
-        "SELECT subscriber_id FROM subscriptions WHERE creator_id = ? AND stripe_status IN ('active', 'trialing') AND LOWER(tier) = 'vip'"
+        `SELECT subscriber_id FROM subscriptions
+         WHERE creator_id = ?
+           AND active = 1
+           AND LOWER(COALESCE(stripe_status, '')) IN ('active', 'trialing')
+           AND LOWER(tier) = 'vip'
+           ${periodGuard}`,
       )
-      .all(params.creatorId)) as Array<{ subscriber_id: string }>;
+      .all(params.creatorId, nowTs)) as Array<{ subscriber_id: string }>;
   } else {
     const limitDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     subscribers = (await db
       .prepare(
-        "SELECT subscriber_id FROM subscriptions WHERE creator_id = ? AND stripe_status IN ('active', 'trialing') AND created_at >= ?"
+        `SELECT subscriber_id FROM subscriptions
+         WHERE creator_id = ?
+           AND active = 1
+           AND LOWER(COALESCE(stripe_status, '')) IN ('active', 'trialing')
+           AND created_at >= ?
+           ${periodGuard}`,
       )
-      .all(params.creatorId, limitDate)) as Array<{ subscriber_id: string }>;
+      .all(params.creatorId, limitDate, nowTs)) as Array<{ subscriber_id: string }>;
   }
 
   const insertGrant = db.prepare(

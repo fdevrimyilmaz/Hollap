@@ -1,48 +1,59 @@
-﻿import { InfoPage } from "@/components/page/InfoPage";
+import type { Metadata } from "next";
+import { InfoPage } from "@/components/page/InfoPage";
+
+export const metadata: Metadata = {
+  title: "Hakkımızda",
+  description:
+    "Hollap; yaratıcı ekonomisi için güvenilir, ölçeklenebilir ve modern bir platform. Misyonumuz, vizyonumuz ve değerlerimiz hakkında daha fazlasını öğrenin.",
+};
 
 export default function AboutPage() {
   return (
     <InfoPage
-      badge="Hakkimizda"
-      title="Yaratici ekonomisi icin guvenilir ve olceklenebilir platform"
-      description="Hollap, uzmanlik bilgisini dijital urune donusturen yaraticilar ile nitelikli icerik arayan ogrencileri ayni ekosistemde bulusturur. Hedefimiz, gelir ureten egitim modellerini sade, guvenli ve olceklenebilir bir altyapiyla desteklemektir."
-      primaryCta={{ label: "Platformu Kesfet", href: "/explore" }}
-      secondaryCta={{ label: "Yaratici Basvurusu", href: "/become-creator" }}
+      badge="Hakkımızda"
+      title="Yaratıcı ekonomisi için güvenilir ve ölçeklenebilir platform"
+      description="Hollap, uzmanlık bilgisini dijital ürüne dönüştüren yaratıcılar ile nitelikli içerik arayan öğrencileri aynı ekosistemde buluşturur. Hedefimiz; gelir üreten eğitim modellerini sade, güvenli ve ölçeklenebilir bir altyapıyla desteklemektir."
+      primaryCta={{ label: "Platformu Keşfet", href: "/explore" }}
+      secondaryCta={{ label: "Yaratıcı Başvurusu", href: "/become-creator" }}
       sections={[
         {
           title: "Misyonumuz",
-          description: "Yaraticilarin bilgi ve deneyimlerini surdurulebilir bir gelir modeline donustururken, ogrenciler icin olculebilir ve kaliteli ogrenme deneyimi sunuyoruz.",
+          description:
+            "Yaratıcıların bilgi ve deneyimlerini sürdürülebilir bir gelir modeline dönüştürürken, öğrenciler için ölçülebilir ve kaliteli bir öğrenme deneyimi sunuyoruz.",
           points: [
-            "Kurs, abonelik ve canli yayin modellerini tek merkezden yonetme",
-            "Kullanim kolayligi yuksek, veri odakli panel deneyimi",
-            "Guvenli odeme akislari ve yasal uyumluluk odagi",
+            "Kurs, abonelik ve canlı yayın modellerini tek merkezden yönetme",
+            "Kullanım kolaylığı yüksek, veri odaklı panel deneyimi",
+            "Güvenli ödeme akışları ve yasal uyumluluk odağı",
           ],
         },
         {
           title: "Vizyonumuz",
-          description: "Turkiye ve global pazarda yaraticilarin ilk tercihi olan topluluk ve egitim platformu olmayi hedefliyoruz.",
+          description:
+            "Türkiye ve global pazarda yaratıcıların ilk tercihi olan topluluk ve eğitim platformu olmayı hedefliyoruz.",
           points: [
-            "Yerel ihtiyaclara uyumlu, esnek gelir modelleri",
-            "Olceklenebilir altyapi ile kesintisiz deneyim",
-            "Yaratici-ogrenci etkilesimini guclendiren urun yaklasimi",
+            "Yerel ihtiyaçlara uyumlu, esnek gelir modelleri",
+            "Ölçeklenebilir altyapı ile kesintisiz deneyim",
+            "Yaratıcı–öğrenci etkileşimini güçlendiren ürün yaklaşımı",
           ],
         },
         {
-          title: "Calisma Ilkelerimiz",
-          description: "Urun gelistirme sureclerinde kalite, seffaflik ve sureklilik ilkelerini esas aliyoruz.",
+          title: "Çalışma İlkelerimiz",
+          description:
+            "Ürün geliştirme süreçlerinde kalite, şeffaflık ve süreklilik ilkelerini esas alıyoruz.",
           points: [
-            "Kullanici geri bildirimleriyle surekli iyilestirme",
-            "Veri guvenligi ve gizlilikte yuksek standartlar",
-            "Uzun vadeli is ortakliklarini onceliklendirme",
+            "Kullanıcı geri bildirimleriyle sürekli iyileştirme",
+            "Veri güvenliği ve gizlilikte yüksek standartlar",
+            "Uzun vadeli iş ortaklıklarını önceliklendirme",
           ],
         },
         {
-          title: "Neden Hollap",
-          description: "Yaraticilarin buyumesine odaklanan butunlesik urun seti ile operasyonel yukleri azaltir, odagi icerik uretime tasiriz.",
+          title: "Neden Hollap?",
+          description:
+            "Yaratıcıların büyümesine odaklanan bütünleşik ürün seti ile operasyonel yükleri azaltır, odağı içerik üretimine taşırız.",
           points: [
-            "Dakikalar icinde yayin ve satisa baslama",
-            "Odeme, icerik ve topluluk yonetimi tek panelde",
-            "Performans takibi icin analitik raporlama",
+            "Dakikalar içinde yayına ve satışa başlama",
+            "Ödeme, içerik ve topluluk yönetimi tek panelde",
+            "Performans takibi için analitik raporlama",
           ],
         },
       ]}

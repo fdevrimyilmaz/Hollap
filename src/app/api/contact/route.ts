@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { HttpError } from "@/lib/server/auth";
 import { createId, db, nowIso } from "@/lib/server/db";
+import { consumeRateLimit, getClientIp } from "@/lib/server/security";
 import { parseJsonBody } from "@/lib/server/validation";
 
 const contactSchema = z.object({
@@ -12,6 +13,24 @@ const contactSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    const clientIp = getClientIp(request);
+    const limit = await consumeRateLimit({
+      key: `contact:ip:${clientIp}`,
+      maxAttempts: 5,
+      windowMs: 60 * 60 * 1000,
+      blockDurationMs: 60 * 60 * 1000,
+    });
+
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: "Çok fazla istek. Lütfen bir süre sonra tekrar deneyin." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(limit.retryAfterSeconds) },
+        }
+      );
+    }
+
     const body = await parseJsonBody(request, contactSchema);
 
     await db.prepare(
