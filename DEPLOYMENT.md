@@ -378,3 +378,54 @@ WHERE user_id = 'usr_XXX' AND revoked_at IS NULL;
 - Stripe SDK is pinned to `^20.3.1` and API version `2026-01-28.clover`.
   Upgrade as a deliberate operation: bump SDK, update `STRIPE_API_VERSION`
   in `src/lib/server/payments.ts`, run webhook tests.
+
+---
+
+## 13. Feature flag matrix (env-aware fallbacks)
+
+The platform degrades gracefully when third-party integrations are not
+configured. Use this table when triaging "X doesn't work in production":
+
+| Feature | Env vars needed | When missing |
+|---|---|---|
+| Stripe checkout / payouts | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | `/api/payments/checkout` returns error; `PayoutsCard` shows dev placeholder that assigns stub `acct_dev_*` |
+| Mux live streaming | `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` | Dashboard "Start broadcast" assigns local stream key; HLS playback URL is null |
+| Email (signup verify, reset, digest) | `SMTP_HOST` + `SMTP_USER` + `SMTP_PASS` | Mail bodies + links are logged to the server console |
+| Web Push | `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY`, `WEB_PUSH_SUBJECT` | Browser bell hidden; `/api/push/vapid-key` returns `{enabled: false}` |
+| OAuth Google | `GOOGLE_OAUTH_CLIENT_ID` + `_SECRET` | Auth pages still show button; clicking redirects to error |
+| OAuth GitHub | `GITHUB_OAUTH_CLIENT_ID` + `_SECRET` | Same as Google |
+| S3/R2 object storage | `OBJECT_STORAGE_DRIVER=s3` + bucket creds | Falls back to `storage/private/` on local disk (NOT persistent on serverless) |
+| Cron-driven digests / retries | `INTERNAL_CRON_KEY` (sender side) | `/api/internal/*` endpoints are open in dev; protected in prod once the key is set |
+
+Run `npm run env:check` to see which features are currently enabled.
+
+---
+
+## 14. Recurring tasks (cron)
+
+The repo includes ready-to-wire cron endpoints. Hook them up via Netlify
+scheduled functions, GitHub Actions, or your platform's cron:
+
+| Endpoint | Recommended schedule | Purpose |
+|---|---|---|
+| `POST /api/internal/retry-deliveries` | every 5 min | Replay failed push / email deliveries (already wired in `.github/workflows/retry-deliveries-cron.yml`) |
+| `POST /api/internal/digest/send` | weekly (Mon 09:00 local) | Sends each creator their 7-day stats summary |
+
+Both require `Authorization: Bearer ${INTERNAL_CRON_KEY}` in production.
+
+---
+
+## 15. Post-deploy smoke test
+
+After every deploy, hit these in order:
+
+```bash
+BASE=https://your-domain.example
+curl -fsS $BASE/api/health | jq '{ok, db, integrations}'
+curl -fsS $BASE/api/payments/products | jq '.products | length'
+curl -fsS $BASE/api/push/vapid-key | jq
+```
+
+If `/api/health` reports `db: "error"`, the most likely cause is
+`DATABASE_URL` pointing at a DB the function can't reach (firewall, SSL).
+Try `DATABASE_SSL=true` + `DATABASE_CA_CERT` for managed providers.
