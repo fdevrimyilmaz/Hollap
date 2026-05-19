@@ -57,8 +57,8 @@ it after deploy.
    DATABASE_URL='postgres://...' npm run db:migrate
    ```
 
-   You should see `0001_init` through `0012_refresh_token_replay_detection`
-   apply.
+   You should see migrations apply from `0001_init` through the current latest
+   file (currently `0019_bookmarks_activity_coupons`).
 4. Verify connectivity:
 
    ```bash
