@@ -332,9 +332,26 @@ draft cleanup. Authenticated with `INTERNAL_CRON_KEY` via
 
 ### Error tracking (optional)
 
-TODO: Sentry/Logflare/Datadog browser SDK integration is not wired by default.
-`src/app/error.tsx` and `src/app/global-error.tsx` currently only log to the
-browser console.
+Errors are routed through a single vendor-agnostic helper instead of raw
+`console.error`. You can plug any HTTP ingest URL without installing a
+vendor SDK, then upgrade to the real SDK later.
+
+- Client side: [`src/lib/client/error-reporting.ts`](src/lib/client/error-reporting.ts)
+  is used by [`src/app/error.tsx`](src/app/error.tsx) and
+  [`src/app/global-error.tsx`](src/app/global-error.tsx). Set
+  `NEXT_PUBLIC_ERROR_REPORT_URL` (and optional `NEXT_PUBLIC_APP_RELEASE`)
+  and every boundary catch POSTs a structured JSON payload to that URL
+  with `keepalive` so the request survives navigation.
+- Server side: [`src/lib/server/logger.ts`](src/lib/server/logger.ts)
+  `logError()` mirrors the same pattern. Set `ERROR_REPORT_URL` and every
+  error log line is forwarded fire-and-forget (failures are swallowed,
+  never escalate to the caller).
+
+Both helpers continue to write to the local console regardless of the env
+var, so dev feedback is unchanged. To migrate to `@sentry/nextjs`
+natively, install the SDK and replace the `dispatch()` body in
+`error-reporting.ts` with `Sentry.captureException()`; boundary code
+needs no further changes.
 
 ---
 

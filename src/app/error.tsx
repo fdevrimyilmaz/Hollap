@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { reportClientError } from "@/lib/client/error-reporting";
 
 type ErrorPageProps = {
   error: Error & { digest?: string };
@@ -11,7 +12,10 @@ type ErrorPageProps = {
 
 export default function ErrorPage({ error, reset }: ErrorPageProps) {
   useEffect(() => {
-    console.error("[ErrorBoundary]", error);
+    reportClientError(error, {
+      source: "ErrorBoundary",
+      digest: error.digest,
+    });
   }, [error]);
 
   return (
