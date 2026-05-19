@@ -32,13 +32,15 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 /.dev*.log
+*.dev.log
 
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
 
-# vercel
+# vercel / netlify CLI working dirs
 .vercel
+.netlify
 
 # typescript
 *.tsbuildinfo
