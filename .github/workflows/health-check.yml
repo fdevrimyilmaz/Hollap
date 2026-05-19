@@ -1,0 +1,41 @@
+name: Production Health Check
+
+on:
+  schedule:
+    # Every 30 minutes, top of the hour and on the half
+    - cron: "0,30 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    name: Ping /api/health
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ vars.PROD_HEALTH_URL != '' }}
+
+    steps:
+      - name: Hit /api/health
+        run: |
+          URL="${{ vars.PROD_HEALTH_URL }}"
+          HEADER=""
+          if [ -n "${{ secrets.INTERNAL_HEALTH_KEY }}" ]; then
+            HEADER="-H Authorization:Bearer\ ${{ secrets.INTERNAL_HEALTH_KEY }}"
+          fi
+          echo "Pinging $URL"
+          RESPONSE=$(curl -fsS --max-time 15 -w "\n%{http_code}" $HEADER "$URL")
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          STATUS=$(echo "$RESPONSE" | tail -n 1)
+          echo "Status: $STATUS"
+          echo "$BODY" | head -c 500
+          if [ "$STATUS" != "200" ]; then
+            exit 1
+          fi
+          OK=$(echo "$BODY" | grep -o '"ok":\(true\|false\)' | head -1)
+          if [ "$OK" != '"ok":true' ]; then
+            echo "Health check returned ok != true"
+            exit 1
+          fi
