@@ -52,6 +52,9 @@ export async function register(): Promise<void> {
 
   const sslDisabled = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "false";
 
+  const storageDriver = (process.env.OBJECT_STORAGE_DRIVER || "").toLowerCase().trim();
+  const localStorageInProd = storageDriver === "local" || storageDriver === "";
+
   const failures: string[] = [];
   if (missing.length) {
     failures.push(`Missing required env vars: ${missing.join(", ")}`);
@@ -61,6 +64,14 @@ export async function register(): Promise<void> {
   }
   if (localhostInProd) {
     failures.push("APP_BASE_URL / APP_ALLOWED_ORIGINS must not reference localhost in production");
+  }
+  if (localStorageInProd) {
+    // Serverless function instances have ephemeral, isolated /tmp; the
+    // local-disk storage driver loses uploads as soon as the function
+    // recycles, and never replicates across cold starts. Refuse to boot.
+    failures.push(
+      "OBJECT_STORAGE_DRIVER must be set to a durable backend (e.g. 's3') in production — local disk is not persistent on Netlify Functions"
+    );
   }
 
   if (sslDisabled) {
