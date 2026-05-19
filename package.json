@@ -23,7 +23,7 @@
     "typecheck": "tsc --noEmit",
     "format": "biome format --write .",
     "test": "vitest run",
-    "test:ci": "node -e \"if(process.env.CI==='true'&&!process.env.DATABASE_URL&&!process.env.DATABASE_URL_PREVIEW&&!process.env.DATABASE_URL_PRODUCTION){console.error('DATABASE_URL, DATABASE_URL_PREVIEW, or DATABASE_URL_PRODUCTION is required in CI to run DB-backed checks.');process.exit(1)}\" && vitest run --passWithNoTests",
+    "test:ci": "node scripts/test-ci-precheck.mjs && vitest run",
     "ci": "npm run lint && npm run typecheck && npm run db:migrate:optional && npm run test:ci",
     "release:preflight": "node scripts/release-preflight.mjs",
     "release:tag": "node scripts/release-tag.mjs",
