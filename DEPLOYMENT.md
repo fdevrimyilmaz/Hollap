@@ -269,6 +269,19 @@ Expected output:
 If `/api/health` returns `ok: false`, check the `integrations` field for
 `"missing"` values and complete the corresponding section above.
 
+After every deploy, also run these endpoint checks:
+
+```bash
+BASE=https://your-domain.example
+curl -fsS $BASE/api/health | jq '{ok, db, integrations}'
+curl -fsS $BASE/api/payments/products | jq '.products | length'
+curl -fsS $BASE/api/push/vapid-key | jq
+```
+
+If `/api/health` reports `db: "error"`, the most likely cause is
+`DATABASE_URL` pointing at a DB the function can't reach (firewall, SSL).
+Try `DATABASE_SSL=true` + `DATABASE_CA_CERT` for managed providers.
+
 ### Stripe webhook end-to-end
 
 From your local machine with Stripe CLI:
@@ -392,9 +405,9 @@ configured. Use this table when triaging "X doesn't work in production":
 | Mux live streaming (optional; requires Mux SDK + credentials) | `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` | Dashboard "Start broadcast" assigns local stream key; HLS playback URL is null |
 | Email (signup verify, reset, digest) | `SMTP_HOST` + `SMTP_USER` + `SMTP_PASS` | Mail bodies + links are logged to the server console |
 | Web Push | `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY`, `WEB_PUSH_SUBJECT` | Browser bell hidden; `/api/push/vapid-key` returns `{enabled: false}` |
-| OAuth Google | `GOOGLE_OAUTH_CLIENT_ID` + `_SECRET` | Auth pages still show button; clicking redirects to error |
-| OAuth GitHub | `GITHUB_OAUTH_CLIENT_ID` + `_SECRET` | Same as Google |
-| S3/R2 object storage | `OBJECT_STORAGE_DRIVER=s3` + bucket creds | Falls back to `storage/private/` on local disk (NOT persistent on serverless) |
+| OAuth Google | `GOOGLE_OAUTH_CLIENT_ID` + `_SECRET` | TODO: credential yokken butonlar halen görünebilir; akış credentials set edilene kadar başarısız olur |
+| OAuth GitHub | `GITHUB_OAUTH_CLIENT_ID` + `_SECRET` | TODO: credential yokken butonlar halen görünebilir; akış credentials set edilene kadar başarısız olur |
+| S3/R2 object storage | `OBJECT_STORAGE_DRIVER=s3` + bucket creds | Falls back to `storage/private/` on local disk. NEVER use local storage fallback in production/serverless deployments. |
 | Cron-driven digests / retries | `INTERNAL_CRON_KEY` (sender side) | `/api/internal/*` endpoints are open in dev; protected in prod once the key is set |
 
 Run `npm run env:check` to see which features are currently enabled.
@@ -412,20 +425,3 @@ scheduled functions, GitHub Actions, or your platform's cron:
 | `POST /api/internal/digest/send` | weekly (Mon 09:00 local) | Sends each creator their 7-day stats summary |
 
 Both require `Authorization: Bearer ${INTERNAL_CRON_KEY}` in production.
-
----
-
-## 15. Post-deploy smoke test
-
-After every deploy, hit these in order:
-
-```bash
-BASE=https://your-domain.example
-curl -fsS $BASE/api/health | jq '{ok, db, integrations}'
-curl -fsS $BASE/api/payments/products | jq '.products | length'
-curl -fsS $BASE/api/push/vapid-key | jq
-```
-
-If `/api/health` reports `db: "error"`, the most likely cause is
-`DATABASE_URL` pointing at a DB the function can't reach (firewall, SSL).
-Try `DATABASE_SSL=true` + `DATABASE_CA_CERT` for managed providers.
