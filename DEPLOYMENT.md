@@ -422,8 +422,8 @@ configured. Use this table when triaging "X doesn't work in production":
 | Mux live streaming (optional; requires Mux SDK + credentials) | `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` | Dashboard "Start broadcast" assigns local stream key; HLS playback URL is null |
 | Email (signup verify, reset, digest) | `SMTP_HOST` + `SMTP_USER` + `SMTP_PASS` | Mail bodies + links are logged to the server console |
 | Web Push | `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY`, `WEB_PUSH_SUBJECT` | Browser bell hidden; `/api/push/vapid-key` returns `{enabled: false}` |
-| OAuth Google | `GOOGLE_OAUTH_CLIENT_ID` + `_SECRET` | TODO: credential yokken butonlar halen görünebilir; akış credentials set edilene kadar başarısız olur |
-| OAuth GitHub | `GITHUB_OAUTH_CLIENT_ID` + `_SECRET` | TODO: credential yokken butonlar halen görünebilir; akış credentials set edilene kadar başarısız olur |
+| OAuth Google | `GOOGLE_OAUTH_CLIENT_ID` + `_SECRET` | Login/signup pages hide the Google button entirely (server reports `/api/auth/oauth/providers` → `google: false`) |
+| OAuth GitHub | `GITHUB_OAUTH_CLIENT_ID` + `_SECRET` | Login page hides the GitHub button entirely (`/api/auth/oauth/providers` → `github: false`) |
 | S3/R2 object storage | `OBJECT_STORAGE_DRIVER=s3` + bucket creds | Falls back to `storage/private/` on local disk. NEVER use local storage fallback in production/serverless deployments. |
 | Cron-driven digests / retries | `INTERNAL_CRON_KEY` (sender side) | `/api/internal/*` endpoints are open in dev; protected in prod once the key is set |
 
