@@ -70,8 +70,9 @@ it after deploy.
 
 Always set `DATABASE_SSL=true` in production. If your provider gives you a CA
 certificate, set `DATABASE_CA_CERT` to its full PEM content for strict
-verification. Avoid `DATABASE_SSL_REJECT_UNAUTHORIZED=false` — it disables
-certificate validation and permits man-in-the-middle on the DB connection.
+verification. Prefer `DATABASE_CA_CERT` for managed PostgreSQL. Use
+`DATABASE_SSL_REJECT_UNAUTHORIZED=false` only as a temporary diagnostic
+workaround.
 
 ---
 
@@ -313,15 +314,14 @@ strings:
 `POST /api/internal/retry-deliveries` runs notification + webhook + upload
 draft cleanup. Authenticated with `INTERNAL_CRON_KEY` via
 `x-internal-key` header. Schedule this every 5–15 minutes from:
-- Netlify scheduled functions (see `.github/workflows/retry-deliveries-cron.yml`
-  for the GitHub Actions alternative)
+- Netlify scheduled functions
 - Or any external cron service
 
 ### Error tracking (optional)
 
-`src/app/error.tsx` and `src/app/global-error.tsx` have a `useEffect` hook
-that logs errors to the browser console. To wire Sentry / Logflare /
-Datadog Browser SDK, replace the `console.error` call in both files.
+TODO: Sentry/Logflare/Datadog browser SDK integration is not wired by default.
+`src/app/error.tsx` and `src/app/global-error.tsx` currently only log to the
+browser console.
 
 ---
 
@@ -389,7 +389,7 @@ configured. Use this table when triaging "X doesn't work in production":
 | Feature | Env vars needed | When missing |
 |---|---|---|
 | Stripe checkout / payouts | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | `/api/payments/checkout` returns error; `PayoutsCard` shows dev placeholder that assigns stub `acct_dev_*` |
-| Mux live streaming | `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` | Dashboard "Start broadcast" assigns local stream key; HLS playback URL is null |
+| Mux live streaming (optional; requires Mux SDK + credentials) | `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` | Dashboard "Start broadcast" assigns local stream key; HLS playback URL is null |
 | Email (signup verify, reset, digest) | `SMTP_HOST` + `SMTP_USER` + `SMTP_PASS` | Mail bodies + links are logged to the server console |
 | Web Push | `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY`, `WEB_PUSH_SUBJECT` | Browser bell hidden; `/api/push/vapid-key` returns `{enabled: false}` |
 | OAuth Google | `GOOGLE_OAUTH_CLIENT_ID` + `_SECRET` | Auth pages still show button; clicking redirects to error |
@@ -408,7 +408,7 @@ scheduled functions, GitHub Actions, or your platform's cron:
 
 | Endpoint | Recommended schedule | Purpose |
 |---|---|---|
-| `POST /api/internal/retry-deliveries` | every 5 min | Replay failed push / email deliveries (already wired in `.github/workflows/retry-deliveries-cron.yml`) |
+| `POST /api/internal/retry-deliveries` | every 5 min | Replay failed push / email deliveries |
 | `POST /api/internal/digest/send` | weekly (Mon 09:00 local) | Sends each creator their 7-day stats summary |
 
 Both require `Authorization: Bearer ${INTERNAL_CRON_KEY}` in production.
