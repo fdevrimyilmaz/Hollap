@@ -1,4 +1,5 @@
 # CreatorHub Production Deployment Runbook
+<!-- cspell:words Supabase hollap DBNAME sslmode whsec presign PRESIGN STARTTLS PKCE keepalive triaging creds -->
 
 End-to-end production deployment guide for the CreatorHub Next.js application.
 Follow top-to-bottom for a clean first launch; later deployments only need the
