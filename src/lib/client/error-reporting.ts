@@ -89,7 +89,6 @@ export function reportClientError(
   context: ErrorContext
 ): void {
   const payload = buildPayload(error, context);
-  // eslint-disable-next-line no-console
   console.error(`[${context.source}]`, error, payload.context);
   dispatch(payload);
 }
