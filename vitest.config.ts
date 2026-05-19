@@ -13,6 +13,7 @@ export default defineConfig({
     globals: true,
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
     exclude: ["node_modules", ".next", "hollap-core", "dist", "build"],
+    setupFiles: ["./vitest.setup.ts"],
   },
 });
 
