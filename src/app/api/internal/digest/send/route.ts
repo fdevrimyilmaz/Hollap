@@ -7,9 +7,13 @@ import {
 
 function isAuthorized(request: Request): boolean {
   const expected = process.env.INTERNAL_CRON_KEY?.trim();
-  if (!expected) return true; // dev: open
-  const header = request.headers.get("authorization");
-  if (header === `Bearer ${expected}`) return true;
+  if (!expected) {
+    return process.env.NODE_ENV !== "production";
+  }
+  const headerKey = request.headers.get("x-internal-key");
+  if (headerKey && headerKey === expected) return true;
+  const authHeader = request.headers.get("authorization");
+  if (authHeader === `Bearer ${expected}`) return true;
   const queryKey = new URL(request.url).searchParams.get("key");
   return queryKey === expected;
 }

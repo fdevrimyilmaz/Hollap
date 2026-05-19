@@ -419,9 +419,18 @@ Run `npm run env:check` to see which features are currently enabled.
 The repo includes ready-to-wire cron endpoints. Hook them up via Netlify
 scheduled functions, GitHub Actions, or your platform's cron:
 
-| Endpoint | Recommended schedule | Purpose |
-|---|---|---|
-| `POST /api/internal/retry-deliveries` | every 5 min | Replay failed push / email deliveries |
-| `POST /api/internal/digest/send` | weekly (Mon 09:00 local) | Sends each creator their 7-day stats summary |
+| Endpoint | Recommended schedule | Workflow | Purpose |
+|---|---|---|---|
+| `POST /api/internal/retry-deliveries` | every 10 min | [`.github/workflows/retry-deliveries-cron.yml`](.github/workflows/retry-deliveries-cron.yml) | Replay failed push / email deliveries; expire overdue subscriptions; clean orphan upload drafts |
+| `POST /api/internal/digest/send` | Monday 06:00 UTC | [`.github/workflows/digest-cron.yml`](.github/workflows/digest-cron.yml) | Sends each active creator their 7-day stats summary |
 
-Both require `Authorization: Bearer ${INTERNAL_CRON_KEY}` in production.
+In production both endpoints require the `INTERNAL_CRON_KEY` and accept any
+of the following:
+- `x-internal-key: ${INTERNAL_CRON_KEY}` header (used by the bundled workflows)
+- `Authorization: Bearer ${INTERNAL_CRON_KEY}` header
+- `?key=${INTERNAL_CRON_KEY}` query parameter (digest endpoint only — convenient for manual GET triggers)
+
+The GitHub Actions workflows expect two repository secrets:
+`APP_BASE_URL` (production origin, e.g. `https://hollap.example.com`) and
+`INTERNAL_CRON_KEY`. Without them the scheduled run fails fast with a
+"missing secret" error rather than silently no-op'ing.

@@ -5,13 +5,19 @@ import { retryFailedStripeWebhooks } from "@/lib/server/payments";
 import { expireOverdueSubscriptions } from "@/lib/server/subscriptions";
 
 function isAuthorized(request: Request): boolean {
-  const configuredKey = process.env.INTERNAL_CRON_KEY;
+  const configuredKey = process.env.INTERNAL_CRON_KEY?.trim();
 
   if (!configuredKey) {
     return process.env.NODE_ENV !== "production";
   }
 
-  return request.headers.get("x-internal-key") === configuredKey;
+  const headerKey = request.headers.get("x-internal-key");
+  if (headerKey && headerKey === configuredKey) return true;
+
+  const authHeader = request.headers.get("authorization");
+  if (authHeader === `Bearer ${configuredKey}`) return true;
+
+  return false;
 }
 
 export async function POST(request: Request) {
